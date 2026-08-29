@@ -6,7 +6,6 @@
 package meteordevelopment.meteorclient.mixin;
 
 import meteordevelopment.meteorclient.systems.modules.Modules;
-import meteordevelopment.meteorclient.systems.modules.render.Xray;
 import meteordevelopment.meteorclient.systems.modules.world.Ambience;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.block.BlockState;
@@ -34,11 +33,7 @@ public abstract class FluidRendererMixin {
             alphas.set(-2);
         }
         else {
-            // Xray and Wallhack
-            int alpha = Xray.getAlpha(fluidState.getBlockState(), pos);
-
-            if (alpha == 0) info.cancel();
-            else alphas.set(alpha);
+            alphas.set(-1);
         }
     }
 

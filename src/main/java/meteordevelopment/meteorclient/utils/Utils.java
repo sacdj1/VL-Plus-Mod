@@ -14,9 +14,7 @@ import meteordevelopment.meteorclient.gui.tabs.TabScreen;
 import meteordevelopment.meteorclient.mixin.*;
 import meteordevelopment.meteorclient.mixininterface.IMinecraftClient;
 import meteordevelopment.meteorclient.settings.StatusEffectAmplifierMapSetting;
-import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.BetterTooltips;
-import meteordevelopment.meteorclient.systems.modules.world.Timer;
 import meteordevelopment.meteorclient.utils.misc.Names;
 import meteordevelopment.meteorclient.utils.player.EChestMemory;
 import meteordevelopment.meteorclient.utils.render.PeekScreen;
@@ -77,7 +75,6 @@ public class Utils {
     public static final Color WHITE = new Color(255, 255, 255);
 
     private static final Random random = new Random();
-    public static boolean firstTimeTitleScreen = true;
     public static boolean isReleasingTrident;
     public static boolean rendering3D = true;
     public static double frameTime;
@@ -106,13 +103,6 @@ public class Utils {
         double tX = mc.player.getX() - mc.player.prevX;
         double tY = mc.player.getY() - mc.player.prevY;
         double tZ = mc.player.getZ() - mc.player.prevZ;
-
-        Timer timer = Modules.get().get(Timer.class);
-        if (timer.isActive()) {
-            tX *= timer.getMultiplier();
-            tY *= timer.getMultiplier();
-            tZ *= timer.getMultiplier();
-        }
 
         tX *= 20;
         tY *= 20;

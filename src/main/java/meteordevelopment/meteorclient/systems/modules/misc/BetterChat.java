@@ -402,8 +402,7 @@ public class BetterChat extends Module {
     }
 
     static {
-        registerCustomHead("[Meteor]", MeteorClient.identifier("textures/icons/chat/meteor.png"));
-        registerCustomHead("[Baritone]", MeteorClient.identifier("textures/icons/chat/baritone.png"));
+        registerCustomHead("[VL+]", MeteorClient.identifier("textures/icons/chat/meteor.png"));
     }
 
     public int modifyChatWidth(int width) {

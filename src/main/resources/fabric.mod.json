@@ -1,9 +1,9 @@
 {
   "schemaVersion": 1,
-  "name": "Meteor Client",
+  "name": "VL+",
   "id": "meteor-client",
   "version": "${version}",
-  "description": "Based utility mod.",
+  "description": "VL+ utility mod.",
   "authors": [
     "MineGame159",
     "squidoodly",
@@ -25,7 +25,6 @@
   },
   "mixins": [
     "meteor-client.mixins.json",
-    "meteor-client-baritone.mixins.json",
     "meteor-client-indigo.mixins.json",
     "meteor-client-sodium.mixins.json",
     "meteor-client-lithium.mixins.json",
@@ -34,7 +33,7 @@
   "accessWidener": "meteor-client.accesswidener",
   "custom": {
     "meteor-client:devbuild": "${devbuild}",
-    "meteor-client:color": "145,61,226",
+    "meteor-client:color": "85,255,85",
     "meteor-client:commit": "${commit}",
     "modmenu": {
       "links": {

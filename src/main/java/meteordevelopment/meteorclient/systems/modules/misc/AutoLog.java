@@ -127,7 +127,7 @@ public class AutoLog extends Module {
     private final Object2IntMap<EntityType<?>> entityCounts = new Object2IntOpenHashMap<>();
 
     public AutoLog() {
-        super(Categories.Combat, "auto-log", "Automatically disconnects you when certain requirements are met.");
+        super(Categories.Misc, "auto-log", "Automatically disconnects you when certain requirements are met.");
     }
 
     @EventHandler

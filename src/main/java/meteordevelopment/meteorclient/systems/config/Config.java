@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.renderer.text.FontFace;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.System;
 import meteordevelopment.meteorclient.systems.Systems;
+import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -100,6 +101,22 @@ public class Config extends System<Config> {
         .name("prefix")
         .description("Prefix.")
         .defaultValue(".")
+        .build()
+    );
+
+    public final Setting<SettingColor> chatPrefixBracketColor = sgChat.add(new ColorSetting.Builder()
+        .name("chat-prefix-bracket-color")
+        .description("Color of the brackets around the chat prefix.")
+        .defaultValue(new SettingColor(0, 170, 0))
+        .onChanged(v -> ChatUtils.updatePrefix())
+        .build()
+    );
+
+    public final Setting<SettingColor> chatPrefixTextColor = sgChat.add(new ColorSetting.Builder()
+        .name("chat-prefix-text-color")
+        .description("Color of the text inside the chat prefix.")
+        .defaultValue(new SettingColor(85, 255, 85))
+        .onChanged(v -> ChatUtils.updatePrefix())
         .build()
     );
 

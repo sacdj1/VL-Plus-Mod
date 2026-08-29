@@ -169,7 +169,7 @@ public abstract class ChatHudMixin implements IChatHud {
 
     @Inject(method = "addVisibleMessage", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/hud/ChatHud;isChatFocused()Z"), locals = LocalCapture.CAPTURE_FAILSOFT)
     private void onBreakChatMessageLines(ChatHudLine message, CallbackInfo ci, int i, MessageIndicator.Icon icon, List<OrderedText> list) {
-        if (Modules.get() == null) return; // baritone calls addMessage before we initialise
+        if (Modules.get() == null) return; // some messages can be added before we initialise
 
         getBetterChat().lines.addFirst(list.size());
     }

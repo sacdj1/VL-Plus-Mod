@@ -6,9 +6,6 @@
   "client": [
     "SodiumLightDataAccessMixin",
     "MeshVertexConsumerMixin",
-    "SodiumBlockOcclusionCacheMixin",
-    "SodiumBlockRendererMixin",
-    "SodiumFluidRendererImplMixin",
     "SodiumFluidRendererImplDefaultRenderContextMixin"
   ],
   "injectors": {

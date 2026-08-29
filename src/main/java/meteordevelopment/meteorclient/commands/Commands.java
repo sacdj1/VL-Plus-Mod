@@ -24,8 +24,6 @@ public class Commands {
 
     @PostInit(dependencies = PathManagers.class)
     public static void init() {
-        add(new VClipCommand());
-        add(new HClipCommand());
         add(new DismountCommand());
         add(new DisconnectCommand());
         add(new DamageCommand());
@@ -36,7 +34,6 @@ public class Commands {
         add(new CommandsCommand());
         add(new InventoryCommand());
         add(new NbtCommand());
-        add(new NotebotCommand());
         add(new PeekCommand());
         add(new EnderChestCommand());
         add(new ProfilesCommand());
@@ -60,8 +57,6 @@ public class Commands {
         add(new RotationCommand());
         add(new WaypointCommand());
         add(new InputCommand());
-        add(new WaspCommand());
-        add(new LocateCommand());
 
         COMMANDS.sort(Comparator.comparing(Command::getName));
     }
