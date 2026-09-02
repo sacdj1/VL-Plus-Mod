@@ -35,7 +35,7 @@ public class Config extends System<Config> {
     public final Setting<Boolean> customFont = sgVisual.add(new BoolSetting.Builder()
         .name("custom-font")
         .description("Use a custom font.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 
@@ -53,6 +53,13 @@ public class Config extends System<Config> {
         .defaultValue(0.5)
         .range(0, 10)
         .sliderMax(5)
+        .build()
+    );
+
+    public final Setting<Boolean> spreadModuleCopyPasteButtons = sgVisual.add(new BoolSetting.Builder()
+        .name("spread-module-copy-paste-buttons")
+        .description("Spreads the Copy/Paste buttons on a module's settings screen across the full row, instead of keeping them together.")
+        .defaultValue(false)
         .build()
     );
 
@@ -95,6 +102,13 @@ public class Config extends System<Config> {
         .build()
     );
 
+    public final Setting<Boolean> showOriginSymbols = sgVisual.add(new BoolSetting.Builder()
+        .name("show-origin-symbols")
+        .description("Prefixes module/HUD element names with a symbol showing whether they're stock Meteor (☄), a stock one VL+ has modified (✎), or added by VL+ from scratch (✚). Symbols are set once at startup, so turning this off fully clears them after a restart.")
+        .defaultValue(true)
+        .build()
+    );
+
     // Chat
 
     public final Setting<String> prefix = sgChat.add(new StringSetting.Builder()
@@ -123,7 +137,7 @@ public class Config extends System<Config> {
     public final Setting<Boolean> chatFeedback = sgChat.add(new BoolSetting.Builder()
         .name("chat-feedback")
         .description("Sends chat feedback when meteor performs certain actions.")
-        .defaultValue(true)
+        .defaultValue(false)
         .build()
     );
 

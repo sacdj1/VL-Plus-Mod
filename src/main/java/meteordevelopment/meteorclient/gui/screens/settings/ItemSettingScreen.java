@@ -8,11 +8,14 @@ package meteordevelopment.meteorclient.gui.screens.settings;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WindowScreen;
 import meteordevelopment.meteorclient.gui.widgets.WItemWithLabel;
+import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.settings.ItemSetting;
 import meteordevelopment.meteorclient.utils.misc.Names;
+import meteordevelopment.meteorclient.utils.world.LegacyItems;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
@@ -25,6 +28,7 @@ public class ItemSettingScreen extends WindowScreen {
 
     private WTextBox filter;
     private String filterText = "";
+    private boolean legacyOnly = true;
 
     public ItemSettingScreen(GuiTheme theme, ItemSetting setting) {
         super(theme, "Select item");
@@ -34,10 +38,30 @@ public class ItemSettingScreen extends WindowScreen {
 
     @Override
     public void initWidgets() {
-        filter = add(theme.textBox("")).minWidth(400).expandX().widget();
+        add(VLItemPickerSection.build(theme, false,
+            vlItem -> setting.get() == vlItem.baseItem,
+            vlItem -> {
+                setting.set(vlItem.baseItem);
+                close();
+            },
+            vlItem -> {}
+        )).expandX();
+
+        WHorizontalList header = add(theme.horizontalList()).expandX().widget();
+
+        filter = header.add(theme.textBox("")).minWidth(400).expandCellX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();
+
+            table.clear();
+            initTable();
+        };
+
+        WCheckbox legacyCheckbox = header.add(theme.checkbox(legacyOnly)).right().widget();
+        header.add(theme.label("Legacy Items")).right();
+        legacyCheckbox.action = () -> {
+            legacyOnly = legacyCheckbox.checked;
 
             table.clear();
             initTable();
@@ -51,6 +75,7 @@ public class ItemSettingScreen extends WindowScreen {
         for (Item item : Registries.ITEM) {
             if (setting.filter != null && !setting.filter.test(item)) continue;
             if (item == Items.AIR) continue;
+            if (legacyOnly && !LegacyItems.isLegacy(Registries.ITEM.getId(item).getPath())) continue;
 
             WItemWithLabel itemLabel = theme.itemWithLabel(item.getDefaultStack(), Names.get(item));
             if (!filterText.isEmpty() && !StringUtils.containsIgnoreCase(itemLabel.getLabelText(), filterText)) continue;

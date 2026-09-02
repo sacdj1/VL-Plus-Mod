@@ -7,6 +7,7 @@ package meteordevelopment.meteorclient.mixin;
 
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.world.Ambience;
+import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.client.color.world.BiomeColors;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.BlockRenderView;
@@ -20,36 +21,57 @@ public abstract class BiomeColorsMixin {
     /**
      * @author Walaryne
      */
-    @Inject(method = "getWaterColor", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getWaterColor", at = @At("RETURN"), cancellable = true)
     private static void onGetWaterColor(BlockRenderView world, BlockPos pos, CallbackInfoReturnable<Integer> info) {
         Ambience ambience = Modules.get().get(Ambience.class);
+        if (!ambience.isActive()) return;
 
-        if (ambience.isActive() && ambience.customWaterColor.get()) {
-            info.setReturnValue(ambience.waterColor.get().getPacked());
+        int base = 0xFF000000 | (info.getReturnValueI() & 0x00FFFFFF);
+
+        if (ambience.customWaterColor.get()) {
+            info.setReturnValue(Ambience.mixTint(ambience.waterColor.get(), base));
+            return;
         }
+
+        SettingColor color = ambience.getBiomeBlockColor(ambience.biomeBlockColors.get(), world, pos);
+        if (color != null) info.setReturnValue(Ambience.mixTint(color, base));
     }
 
     /**
      * @author Walaryne
      */
-    @Inject(method = "getFoliageColor", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getFoliageColor", at = @At("RETURN"), cancellable = true)
     private static void onGetFoliageColor(BlockRenderView world, BlockPos pos, CallbackInfoReturnable<Integer> info) {
         Ambience ambience = Modules.get().get(Ambience.class);
+        if (!ambience.isActive()) return;
 
-        if (ambience.isActive() && ambience.customFoliageColor.get()) {
-            info.setReturnValue(ambience.foliageColor.get().getPacked());
+        int base = 0xFF000000 | (info.getReturnValueI() & 0x00FFFFFF);
+
+        if (ambience.customFoliageColor.get()) {
+            info.setReturnValue(Ambience.mixTint(ambience.foliageColor.get(), base));
+            return;
         }
+
+        SettingColor color = ambience.getBiomeBlockColor(ambience.biomeBlockColors.get(), world, pos);
+        if (color != null) info.setReturnValue(Ambience.mixTint(color, base));
     }
 
     /**
      * @author Walaryne
      */
-    @Inject(method = "getGrassColor", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "getGrassColor", at = @At("RETURN"), cancellable = true)
     private static void onGetGrassColor(BlockRenderView world, BlockPos pos, CallbackInfoReturnable<Integer> info) {
         Ambience ambience = Modules.get().get(Ambience.class);
+        if (!ambience.isActive()) return;
 
-        if (ambience.isActive() && ambience.customGrassColor.get()) {
-            info.setReturnValue(ambience.grassColor.get().getPacked());
+        int base = 0xFF000000 | (info.getReturnValueI() & 0x00FFFFFF);
+
+        if (ambience.customGrassColor.get()) {
+            info.setReturnValue(Ambience.mixTint(ambience.grassColor.get(), base));
+            return;
         }
+
+        SettingColor color = ambience.getBiomeBlockColor(ambience.biomeBlockColors.get(), world, pos);
+        if (color != null) info.setReturnValue(Ambience.mixTint(color, base));
     }
 }

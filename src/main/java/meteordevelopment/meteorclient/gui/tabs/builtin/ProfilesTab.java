@@ -20,6 +20,7 @@ import meteordevelopment.meteorclient.systems.profiles.Profiles;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.NbtUtils;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.nbt.NbtCompound;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,6 +74,19 @@ public class ProfilesTab extends Tab {
 
                 WButton edit = table.add(theme.button(GuiRenderer.EDIT)).widget();
                 edit.action = () -> mc.setScreen(new EditProfileScreen(theme, profile, this::reload));
+
+                WButton copy = table.add(theme.button(GuiRenderer.COPY)).widget();
+                copy.action = () -> NbtUtils.toClipboard(profile.name.get(), profile.toTag());
+
+                WButton paste = table.add(theme.button(GuiRenderer.PASTE)).widget();
+                paste.action = () -> {
+                    NbtCompound clipboard = NbtUtils.fromClipboard(profile.toTag());
+                    if (clipboard == null) return;
+
+                    profile.fromTag(clipboard);
+                    Profiles.get().save();
+                    reload();
+                };
 
                 WMinus remove = table.add(theme.minus()).widget();
                 remove.action = () -> {

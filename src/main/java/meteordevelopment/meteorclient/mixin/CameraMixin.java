@@ -49,13 +49,6 @@ public abstract class CameraMixin implements ICamera {
         return (Modules.get().get(Freecam.class).isActive() ? 0 : (float) Modules.get().get(CameraTweaks.class).getDistance());
     }
 
-    @Inject(method = "clipToSpace", at = @At("HEAD"), cancellable = true)
-    private void onClipToSpace(float desiredCameraDistance, CallbackInfoReturnable<Float> info) {
-        if (Modules.get().get(CameraTweaks.class).clip()) {
-            info.setReturnValue(desiredCameraDistance);
-        }
-    }
-
     @Inject(method = "update", at = @At("HEAD"))
     private void onUpdateHead(BlockView area, Entity focusedEntity, boolean thirdPerson, boolean inverseView, float tickDelta, CallbackInfo info) {
         this.tickDelta = tickDelta;

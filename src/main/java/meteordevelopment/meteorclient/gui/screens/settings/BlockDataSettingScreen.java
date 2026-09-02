@@ -8,15 +8,18 @@ package meteordevelopment.meteorclient.gui.screens.settings;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WindowScreen;
 import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
+import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.settings.BlockDataSetting;
 import meteordevelopment.meteorclient.settings.IBlockData;
 import meteordevelopment.meteorclient.utils.misc.IChangeable;
 import meteordevelopment.meteorclient.utils.misc.ICopyable;
 import meteordevelopment.meteorclient.utils.misc.ISerializable;
 import meteordevelopment.meteorclient.utils.misc.Names;
+import meteordevelopment.meteorclient.utils.world.LegacyBlocks;
 import net.minecraft.block.Block;
 import net.minecraft.registry.Registries;
 import org.apache.commons.lang3.StringUtils;
@@ -33,6 +36,7 @@ public class BlockDataSettingScreen extends WindowScreen {
 
     private WTable table;
     private String filterText = "";
+    private boolean legacyOnly = true;
 
     public BlockDataSettingScreen(GuiTheme theme, BlockDataSetting<?> setting) {
         super(theme, "Configure Blocks");
@@ -42,10 +46,21 @@ public class BlockDataSettingScreen extends WindowScreen {
 
     @Override
     public void initWidgets() {
-        WTextBox filter = add(theme.textBox("")).minWidth(400).expandX().widget();
+        WHorizontalList header = add(theme.horizontalList()).expandX().widget();
+
+        WTextBox filter = header.add(theme.textBox("")).minWidth(400).expandCellX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();
+
+            table.clear();
+            initTable();
+        };
+
+        WCheckbox legacyCheckbox = header.add(theme.checkbox(legacyOnly)).right().widget();
+        header.add(theme.label("Legacy Items")).right();
+        legacyCheckbox.action = () -> {
+            legacyOnly = legacyCheckbox.checked;
 
             table.clear();
             initTable();
@@ -67,6 +82,10 @@ public class BlockDataSettingScreen extends WindowScreen {
         for (Block block : BLOCKS) {
             String name = Names.get(block);
             if (!StringUtils.containsIgnoreCase(name, filterText)) continue;
+
+            T existingData = (T) setting.get().get(block);
+            boolean changed = existingData != null && existingData.isChanged();
+            if (legacyOnly && !changed && !LegacyBlocks.isLegacy(Registries.BLOCK.getId(block).getPath())) continue;
 
             T blockData = (T) setting.get().get(block);
 

@@ -69,10 +69,24 @@ public class ModulesScreen extends TabScreen {
         w.view.spacing = 0;
 
         for (Module module : Modules.get().getGroup(category)) {
+            if (isHidden(module)) continue;
+
             w.add(theme.module(module)).expandX();
         }
 
         return w;
+    }
+
+    private static boolean isHidden(Module module) {
+        return module.hidden && !Modules.get().isDevUnlocked();
+    }
+
+    private static boolean hasVisibleModules(Category category) {
+        for (Module module : Modules.get().getGroup(category)) {
+            if (!isHidden(module)) return true;
+        }
+
+        return false;
     }
 
     // Search
@@ -88,6 +102,7 @@ public class ModulesScreen extends TabScreen {
 
                 int count = 0;
                 for (Module module : modules) {
+                    if (isHidden(module)) continue;
                     if (count >= Config.get().moduleSearchCount.get() || count >= modules.size()) break;
                     section.add(theme.module(module)).expandX();
                     count++;
@@ -103,6 +118,7 @@ public class ModulesScreen extends TabScreen {
 
                 int count = 0;
                 for (Module module : modules) {
+                    if (isHidden(module)) continue;
                     if (count >= Config.get().moduleSearchCount.get() || count >= modules.size()) break;
                     section.add(theme.module(module)).expandX();
                     count++;
@@ -142,7 +158,7 @@ public class ModulesScreen extends TabScreen {
     // Favorites
 
     protected Cell<WWindow> createFavorites(WContainer c) {
-        boolean hasFavorites = Modules.get().getAll().stream().anyMatch(module -> module.favorite);
+        boolean hasFavorites = Modules.get().getAll().stream().anyMatch(module -> module.favorite && !isHidden(module));
         if (!hasFavorites) return null;
 
         WWindow w = theme.window("Favorites");
@@ -167,7 +183,7 @@ public class ModulesScreen extends TabScreen {
         List<Module> modules = new ArrayList<>();
 
         for (Module module : Modules.get().getAll()) {
-            if (module.favorite) {
+            if (module.favorite && !isHidden(module)) {
                 modules.add(module);
             }
         }
@@ -203,7 +219,7 @@ public class ModulesScreen extends TabScreen {
         @Override
         public void init() {
             for (Category category : Modules.loopCategories()) {
-                windows.add(createCategory(this, category));
+                if (hasVisibleModules(category)) windows.add(createCategory(this, category));
             }
 
             windows.add(createSearch(this));

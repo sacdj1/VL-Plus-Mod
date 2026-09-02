@@ -9,8 +9,10 @@ import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WindowScreen;
 import meteordevelopment.meteorclient.gui.utils.Cell;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
+import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WPressable;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.utils.Utils;
@@ -30,6 +32,7 @@ public abstract class RegistryListSettingScreen<T> extends WindowScreen {
 
     private WTextBox filter;
     private String filterText = "";
+    protected boolean legacyOnly = true;
 
     private WTable table;
 
@@ -44,7 +47,9 @@ public abstract class RegistryListSettingScreen<T> extends WindowScreen {
     @Override
     public void initWidgets() {
         // Filter
-        filter = add(theme.textBox("")).minWidth(400).expandX().widget();
+        WHorizontalList header = add(theme.horizontalList()).expandX().widget();
+
+        filter = header.add(theme.textBox("")).minWidth(400).expandCellX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();
@@ -52,6 +57,17 @@ public abstract class RegistryListSettingScreen<T> extends WindowScreen {
             table.clear();
             initWidgets(registry);
         };
+
+        if (supportsLegacyFilter()) {
+            WCheckbox legacyCheckbox = header.add(theme.checkbox(legacyOnly)).right().widget();
+            header.add(theme.label(legacyFilterLabel())).right();
+            legacyCheckbox.action = () -> {
+                legacyOnly = legacyCheckbox.checked;
+
+                table.clear();
+                initWidgets(registry);
+            };
+        }
 
         table = add(theme.table()).expandX().widget();
 
@@ -117,6 +133,7 @@ public abstract class RegistryListSettingScreen<T> extends WindowScreen {
 
         Consumer<T> forEach = t -> {
             if (!includeValue(t)) return;
+            if (isLeft && supportsLegacyFilter() && legacyOnly && !isLegacyValue(t)) return;
 
             table.add(getValueWidget(t));
 
@@ -138,6 +155,18 @@ public abstract class RegistryListSettingScreen<T> extends WindowScreen {
     }
 
     protected boolean includeValue(T value) {
+        return true;
+    }
+
+    protected boolean supportsLegacyFilter() {
+        return false;
+    }
+
+    protected String legacyFilterLabel() {
+        return "Legacy Items";
+    }
+
+    protected boolean isLegacyValue(T value) {
         return true;
     }
 

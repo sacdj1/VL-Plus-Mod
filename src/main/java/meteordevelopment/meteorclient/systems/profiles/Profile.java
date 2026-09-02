@@ -49,8 +49,8 @@ public class Profile implements ISerializable<Profile> {
     );
 
     public Setting<Boolean> macros = sgSave.add(new BoolSetting.Builder()
-        .name("macros")
-        .description("Whether the profile should save macros.")
+        .name("hotkeys")
+        .description("Whether the profile should save hotkeys.")
         .defaultValue(false)
         .build()
     );

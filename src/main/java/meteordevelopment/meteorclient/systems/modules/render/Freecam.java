@@ -108,6 +108,13 @@ public class Freecam extends Module {
         .build()
     );
 
+    private final Setting<Boolean> collision = sgGeneral.add(new BoolSetting.Builder()
+        .name("collision")
+        .description("Prevents the camera from clipping through blocks.")
+        .defaultValue(false)
+        .build()
+    );
+
     public final Vector3d pos = new Vector3d();
     public final Vector3d prevPos = new Vector3d();
 
@@ -258,8 +265,23 @@ public class Freecam extends Module {
             velY -= s * speedValue;
         }
 
+        double newX = pos.x + velX;
+        double newY = pos.y + velY;
+        double newZ = pos.z + velZ;
+
+        if (collision.get()) {
+            if (isSolidAt(newX, pos.y, pos.z)) newX = pos.x;
+            if (isSolidAt(newX, newY, pos.z)) newY = pos.y;
+            if (isSolidAt(newX, newY, newZ)) newZ = pos.z;
+        }
+
         prevPos.set(pos);
-        pos.set(pos.x + velX, pos.y + velY, pos.z + velZ);
+        pos.set(newX, newY, newZ);
+    }
+
+    private boolean isSolidAt(double x, double y, double z) {
+        BlockPos blockPos = BlockPos.ofFloored(x, y, z);
+        return !mc.world.getBlockState(blockPos).getCollisionShape(mc.world, blockPos).isEmpty();
     }
 
     @EventHandler

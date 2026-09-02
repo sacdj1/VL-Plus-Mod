@@ -5,8 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.render;
 
-import meteordevelopment.meteorclient.settings.ColorSetting;
-import meteordevelopment.meteorclient.settings.ItemListSetting;
+import meteordevelopment.meteorclient.settings.ItemColorMapSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Categories;
@@ -15,21 +14,14 @@ import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 
-import java.util.List;
+import java.util.Map;
 
 public class ItemHighlight extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
-    private final Setting<List<Item>> items = sgGeneral.add(new ItemListSetting.Builder()
+    private final Setting<Map<Item, SettingColor>> items = sgGeneral.add(new ItemColorMapSetting.Builder()
         .name("items")
-        .description("Items to highlight.")
-        .build()
-    );
-
-    private final Setting<SettingColor> color = sgGeneral.add(new ColorSetting.Builder()
-        .name("color")
-        .description("The color to highlight the items with.")
-        .defaultValue(new SettingColor(225, 25, 255, 50))
+        .description("Items to highlight, each with its own color.")
         .build()
     );
 
@@ -38,7 +30,9 @@ public class ItemHighlight extends Module {
     }
 
     public int getColor(ItemStack stack) {
-        if (stack != null && items.get().contains(stack.getItem()) && isActive()) return color.get().getPacked();
-        return -1;
+        if (stack == null || !isActive()) return -1;
+
+        SettingColor color = items.get().get(stack.getItem());
+        return color != null ? color.getPacked() : -1;
     }
 }

@@ -31,7 +31,7 @@ public abstract class Module implements ISerializable<Module>, Comparable<Module
 
     public final Category category;
     public final String name;
-    public final String title;
+    public String title;
     public final String description;
     public final String[] aliases;
     public final Color color;
@@ -49,6 +49,7 @@ public abstract class Module implements ISerializable<Module>, Comparable<Module
     public boolean toggleOnBindRelease = false;
     public boolean chatFeedback = true;
     public boolean favorite = false;
+    public boolean hidden = false;
 
     public Module(Category category, String name, String description, String... aliases) {
         if (name.contains(" ")) MeteorClient.LOG.warn("Module '{}' contains invalid characters in its name making it incompatible with Meteor Client commands.", name);

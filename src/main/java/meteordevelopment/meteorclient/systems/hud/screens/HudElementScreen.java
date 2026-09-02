@@ -7,16 +7,19 @@ package meteordevelopment.meteorclient.systems.hud.screens;
 
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WindowScreen;
+import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.utils.Cell;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import meteordevelopment.meteorclient.gui.widgets.containers.WContainer;
 import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WMinus;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.EnumSetting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.settings.Settings;
+import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.hud.HudElement;
 import meteordevelopment.meteorclient.systems.hud.XAnchor;
 import meteordevelopment.meteorclient.systems.hud.YAnchor;
@@ -24,6 +27,7 @@ import meteordevelopment.meteorclient.utils.misc.NbtUtils;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.nbt.NbtCompound;
 
+import static meteordevelopment.meteorclient.utils.Utils.getWindowHeight;
 import static meteordevelopment.meteorclient.utils.Utils.getWindowWidth;
 
 public class HudElementScreen extends WindowScreen {
@@ -110,8 +114,26 @@ public class HudElementScreen extends WindowScreen {
             if (element.isActive() != active.checked) element.toggle();
         };
 
+        //   Copy / Paste / Duplicate
+        WButton copy = bottomList.add(theme.button(GuiRenderer.COPY)).expandCellX().right().widget();
+        copy.action = this::toClipboard;
+
+        WButton paste = bottomList.add(theme.button(GuiRenderer.PASTE)).right().widget();
+        paste.action = () -> {
+            if (fromClipboard()) reload();
+        };
+
+        WButton duplicate = bottomList.add(theme.button("Duplicate")).right().widget();
+        duplicate.action = () -> {
+            int centerX = getWindowWidth() / 2;
+            int centerY = getWindowHeight() / 2;
+
+            Hud.get().duplicate(element, centerX, centerY);
+            close();
+        };
+
         //   Remove
-        WMinus remove = bottomList.add(theme.minus()).expandCellX().right().widget();
+        WMinus remove = bottomList.add(theme.minus()).right().widget();
         remove.action = () -> {
             element.remove();
             close();

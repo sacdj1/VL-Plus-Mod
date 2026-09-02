@@ -25,7 +25,7 @@ public class Fullbright extends Module {
     public final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
         .name("mode")
         .description("The mode to use for Fullbright.")
-        .defaultValue(Mode.Gamma)
+        .defaultValue(Mode.Luminance)
         .onChanged(mode -> {
             if (isActive()) {
                 if (mode != Mode.Potion) disableNightVision();

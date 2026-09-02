@@ -8,9 +8,7 @@ package meteordevelopment.meteorclient.mixin;
 import com.mojang.authlib.GameProfile;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.misc.NameProtect;
-import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.client.util.DefaultSkinHelper;
 import net.minecraft.client.util.SkinTextures;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -25,10 +23,7 @@ public abstract class PlayerListEntryMixin {
 
     @Inject(method = "getSkinTextures", at = @At("HEAD"), cancellable = true)
     private void onGetTexture(CallbackInfoReturnable<SkinTextures> info) {
-        if (getProfile().getName().equals(MinecraftClient.getInstance().getSession().getUsername())) {
-            if (Modules.get().get(NameProtect.class).skinProtect()) {
-                info.setReturnValue(DefaultSkinHelper.getSkinTextures(getProfile()));
-            }
-        }
+        SkinTextures override = Modules.get().get(NameProtect.class).getSkinOverride(getProfile());
+        if (override != null) info.setReturnValue(override);
     }
 }

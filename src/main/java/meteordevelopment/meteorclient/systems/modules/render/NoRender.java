@@ -368,7 +368,7 @@ public class NoRender extends Module {
     private final Setting<Boolean> noDeadEntities = sgEntity.add(new BoolSetting.Builder()
         .name("dead-entities")
         .description("Disables rendering of dead entities")
-        .defaultValue(false)
+        .defaultValue(true)
         .build()
     );
 
@@ -381,6 +381,8 @@ public class NoRender extends Module {
 
     public NoRender() {
         super(Categories.Render, "no-render", "Disables certain animations or overlays from rendering.");
+
+        favorite = true;
     }
 
     @Override

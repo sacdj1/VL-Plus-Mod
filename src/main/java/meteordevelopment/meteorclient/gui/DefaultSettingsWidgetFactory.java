@@ -42,6 +42,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         super(theme);
 
         factories.put(BoolSetting.class, (table, setting) -> boolW(table, (BoolSetting) setting));
+        factories.put(ButtonSetting.class, (table, setting) -> buttonW(table, (ButtonSetting) setting));
         factories.put(IntSetting.class, (table, setting) -> intW(table, (IntSetting) setting));
         factories.put(DoubleSetting.class, (table, setting) -> doubleW(table, (DoubleSetting) setting));
         factories.put(StringSetting.class, (table, setting) -> stringW(table, (StringSetting) setting));
@@ -53,7 +54,11 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         factories.put(BlockSetting.class, (table, setting) -> blockW(table, (BlockSetting) setting));
         factories.put(BlockListSetting.class, (table, setting) -> blockListW(table, (BlockListSetting) setting));
         factories.put(ItemSetting.class, (table, setting) -> itemW(table, (ItemSetting) setting));
+        factories.put(VLItemSetting.class, (table, setting) -> vlItemW(table, (VLItemSetting) setting));
         factories.put(ItemListSetting.class, (table, setting) -> itemListW(table, (ItemListSetting) setting));
+        factories.put(ItemColorMapSetting.class, (table, setting) -> itemColorMapW(table, (ItemColorMapSetting) setting));
+        factories.put(ParticleColorMapSetting.class, (table, setting) -> particleColorMapW(table, (ParticleColorMapSetting) setting));
+        factories.put(BiomeBlockColorSetting.class, (table, setting) -> biomeBlockColorW(table, (BiomeBlockColorSetting) setting));
         factories.put(EntityTypeListSetting.class, (table, setting) -> entityTypeListW(table, (EntityTypeListSetting) setting));
         factories.put(EnchantmentListSetting.class, (table, setting) -> enchantmentListW(table, (EnchantmentListSetting) setting));
         factories.put(ModuleListSetting.class, (table, setting) -> moduleListW(table, (ModuleListSetting) setting));
@@ -160,6 +165,14 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         checkbox.action = () -> setting.set(checkbox.checked);
 
         reset(table, setting, () -> checkbox.checked = setting.get());
+    }
+
+    private void buttonW(WTable table, ButtonSetting setting) {
+        WButton button = table.add(theme.button(setting.buttonText)).expandCellX().widget();
+        button.action = () -> {
+            setting.press();
+            if (setting.screenFactory != null) mc.setScreen(setting.screenFactory.createScreen(theme));
+        };
     }
 
     private void intW(WTable table, IntSetting setting) {
@@ -291,8 +304,40 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         reset(table, setting, () -> item.set(setting.get().getDefaultStack()));
     }
 
+    private void vlItemW(WTable table, VLItemSetting setting) {
+        WHorizontalList list = table.add(theme.horizontalList()).expandX().widget();
+
+        WItem item = list.add(theme.item(getVLItemIcon(setting))).widget();
+
+        WButton select = list.add(theme.button("Select")).widget();
+        select.action = () -> {
+            VLItemSettingScreen screen = new VLItemSettingScreen(theme, setting);
+            screen.onClosed(() -> item.set(getVLItemIcon(setting)));
+
+            mc.setScreen(screen);
+        };
+
+        reset(table, setting, () -> item.set(getVLItemIcon(setting)));
+    }
+
+    private static net.minecraft.item.ItemStack getVLItemIcon(VLItemSetting setting) {
+        return mc.world != null ? setting.get().getIcon(mc.world.getRegistryManager()) : setting.get().getBaseItem().getDefaultStack();
+    }
+
     private void itemListW(WTable table, ItemListSetting setting) {
         selectW(table, setting, () -> mc.setScreen(new ItemListSettingScreen(theme, setting)));
+    }
+
+    private void itemColorMapW(WTable table, ItemColorMapSetting setting) {
+        selectW(table, setting, () -> mc.setScreen(new ItemColorMapSettingScreen(theme, setting)));
+    }
+
+    private void particleColorMapW(WTable table, ParticleColorMapSetting setting) {
+        selectW(table, setting, () -> mc.setScreen(new ParticleColorMapSettingScreen(theme, setting)));
+    }
+
+    private void biomeBlockColorW(WTable table, BiomeBlockColorSetting setting) {
+        selectW(table, setting, () -> mc.setScreen(new BiomeBlockColorMapSettingScreen(theme, setting)));
     }
 
     private void entityTypeListW(WTable table, EntityTypeListSetting setting) {

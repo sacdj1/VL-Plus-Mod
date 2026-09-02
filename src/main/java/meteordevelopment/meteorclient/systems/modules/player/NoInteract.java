@@ -86,6 +86,7 @@ public class NoInteract extends Module {
         .name("entity-interact")
         .description("Cancel entity interaction.")
         .onlyAttackable()
+        .defaultValue(EntityType.VILLAGER)
         .build()
     );
 
@@ -126,6 +127,8 @@ public class NoInteract extends Module {
 
     public NoInteract() {
         super(Categories.Player, "no-interact", "Blocks interactions with certain types of inputs.");
+
+        favorite = true;
     }
 
     @EventHandler(priority = EventPriority.HIGH)

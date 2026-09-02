@@ -38,7 +38,7 @@ public class InventoryHud extends HudElement {
     private final Setting<Double> scale = sgGeneral.add(new DoubleSetting.Builder()
         .name("scale")
         .description("The scale.")
-        .defaultValue(2)
+        .defaultValue(3)
         .min(1)
         .sliderRange(1, 5)
         .onChanged(aDouble -> calculateSize())
@@ -48,7 +48,7 @@ public class InventoryHud extends HudElement {
     private final Setting<Background> background = sgGeneral.add(new EnumSetting.Builder<Background>()
         .name("background")
         .description("Background of inventory viewer.")
-        .defaultValue(Background.Texture)
+        .defaultValue(Background.Outline)
         .onChanged(bg -> calculateSize())
         .build()
     );
@@ -56,7 +56,7 @@ public class InventoryHud extends HudElement {
     private final Setting<SettingColor> color = sgGeneral.add(new ColorSetting.Builder()
         .name("background-color")
         .description("Color of the background.")
-        .defaultValue(new SettingColor(255, 255, 255))
+        .defaultValue(new SettingColor(75, 192, 0))
         .visible(() -> background.get() != Background.None)
         .build()
     );

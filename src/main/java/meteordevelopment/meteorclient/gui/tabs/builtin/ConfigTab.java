@@ -9,11 +9,13 @@ import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.tabs.Tab;
 import meteordevelopment.meteorclient.gui.tabs.TabScreen;
 import meteordevelopment.meteorclient.gui.tabs.WindowTabScreen;
+import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.settings.Settings;
 import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.utils.misc.NbtUtils;
 import meteordevelopment.meteorclient.utils.render.prompts.YesNoPrompt;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.util.Util;
 
 public class ConfigTab extends Tab {
     public ConfigTab() {
@@ -78,6 +80,9 @@ public class ConfigTab extends Tab {
         @Override
         public void initWidgets() {
             add(theme.settings(settings)).expandX();
+
+            WButton credits = add(theme.button("Credits")).expandX().widget();
+            credits.action = () -> Util.getOperatingSystem().open("https://github.com/MeteorDevelopment/meteor-client");
         }
 
         @Override

@@ -6,7 +6,9 @@
   "client": [
     "SodiumLightDataAccessMixin",
     "MeshVertexConsumerMixin",
-    "SodiumFluidRendererImplDefaultRenderContextMixin"
+    "SodiumFluidRendererImplDefaultRenderContextMixin",
+    "SodiumColorProviderRegistryMixin",
+    "LevelSliceAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

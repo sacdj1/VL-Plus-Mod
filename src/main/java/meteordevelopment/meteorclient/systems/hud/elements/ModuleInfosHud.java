@@ -41,21 +41,21 @@ public class ModuleInfosHud extends HudElement {
     private final Setting<SettingColor> moduleColor = sgGeneral.add(new ColorSetting.Builder()
         .name("module-color")
         .description("Module color.")
-        .defaultValue(new SettingColor())
+        .defaultValue(new SettingColor(131, 255, 0))
         .build()
     );
 
     private final Setting<SettingColor> onColor = sgGeneral.add(new ColorSetting.Builder()
         .name("on-color")
         .description("Color when module is on.")
-        .defaultValue(new SettingColor(25, 225, 25))
+        .defaultValue(new SettingColor(255, 0, 242))
         .build()
     );
 
     private final Setting<SettingColor> offColor = sgGeneral.add(new ColorSetting.Builder()
         .name("off-color")
         .description("Color when module is off.")
-        .defaultValue(new SettingColor(225, 25, 25))
+        .defaultValue(new SettingColor(152, 25, 225))
         .build()
     );
 

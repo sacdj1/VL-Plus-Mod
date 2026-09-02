@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.mixin.IdentifierAccessor;
 import meteordevelopment.meteorclient.settings.BlockListSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.utils.misc.Names;
+import meteordevelopment.meteorclient.utils.world.LegacyBlocks;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.Registries;
@@ -47,6 +48,16 @@ public class BlockListSettingScreen extends RegistryListSettingScreen<Block> {
     @Override
     protected boolean skipValue(Block value) {
         return Registries.BLOCK.getId(value).getPath().endsWith("_wall_banner");
+    }
+
+    @Override
+    protected boolean supportsLegacyFilter() {
+        return true;
+    }
+
+    @Override
+    protected boolean isLegacyValue(Block value) {
+        return LegacyBlocks.isLegacy(Registries.BLOCK.getId(value).getPath());
     }
 
     @Override

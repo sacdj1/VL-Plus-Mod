@@ -16,10 +16,15 @@ import net.minecraft.item.Items;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class StorageBlockListSettingScreen extends RegistryListSettingScreen<BlockEntityType<?>> {
     private static final Map<BlockEntityType<?>, BlockEntityTypeInfo> BLOCK_ENTITY_TYPE_INFO_MAP = new Object2ObjectOpenHashMap<>();
     private static final BlockEntityTypeInfo UNKNOWN = new BlockEntityTypeInfo(Items.BARRIER, "Unknown");
+    private static final Set<BlockEntityType<?>> LEGACY = Set.of(
+        BlockEntityType.CHEST, BlockEntityType.FURNACE, BlockEntityType.DISPENSER, BlockEntityType.DROPPER,
+        BlockEntityType.HOPPER, BlockEntityType.BREWING_STAND, BlockEntityType.ENDER_CHEST, BlockEntityType.TRAPPED_CHEST
+    );
 
     static {
         // Map of storage blocks
@@ -54,6 +59,16 @@ public class StorageBlockListSettingScreen extends RegistryListSettingScreen<Blo
     @Override
     protected String getValueName(BlockEntityType<?> value) {
         return BLOCK_ENTITY_TYPE_INFO_MAP.getOrDefault(value, UNKNOWN).name();
+    }
+
+    @Override
+    protected boolean supportsLegacyFilter() {
+        return true;
+    }
+
+    @Override
+    protected boolean isLegacyValue(BlockEntityType<?> value) {
+        return LEGACY.contains(value);
     }
 
     private record BlockEntityTypeInfo(Item item, String name) {}

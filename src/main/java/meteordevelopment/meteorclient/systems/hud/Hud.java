@@ -30,7 +30,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 public class Hud extends System<Hud> implements Iterable<HudElement> {
     public static final HudGroup GROUP = new HudGroup("VL+");
 
-    public boolean active;
+    public boolean active = true;
     public Settings settings = new Settings();
 
     public final Map<String, HudElementInfo<?>> infos = new TreeMap<>();
@@ -45,7 +45,7 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
     private final Setting<Boolean> customFont = sgGeneral.add(new BoolSetting.Builder()
         .name("custom-font")
         .description("Text will use custom font.")
-        .defaultValue(true)
+        .defaultValue(false)
         .onChanged(aBoolean -> {
             for (HudElement element : elements) element.onFontChanged();
         })
@@ -121,7 +121,6 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(InventoryHud.INFO);
         register(CompassHud.INFO);
         register(ArmorHud.INFO);
-        register(HoleHud.INFO);
         register(PlayerModelHud.INFO);
         register(ActiveModulesHud.INFO);
         register(LagNotifierHud.INFO);
@@ -129,6 +128,10 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(ModuleInfosHud.INFO);
         register(PotionTimersHud.INFO);
         register(CombatHud.INFO);
+        register(DpsHud.INFO);
+        register(AbilityCooldownHud.INFO);
+        register(XPLevelHud.INFO);
+        register(ReaderNotifHud.INFO);
 
         // Default config
         if (isFirstInit) resetToDefaultElements();
@@ -171,6 +174,15 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         add(preset, x, y, null, null);
     }
 
+    /** Creates a new element of the same type as {@code source}, with the same settings but a fresh position. */
+    public void duplicate(HudElement source, int x, int y) {
+        HudElement copy = source.info.create();
+        copy.settings.fromTag(source.settings.toTag());
+        copy.autoAnchors = source.autoAnchors;
+
+        add(copy, x, y, null, null);
+    }
+
     void remove(HudElement element) {
         element.settings.unregisterColorSettings();
         elements.remove(element);
@@ -184,25 +196,44 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         resetToDefaultElements = true;
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private void resetToDefaultElementsImpl() {
         elements.clear();
 
-        int h = (int) Math.ceil(HudRenderer.INSTANCE.textHeight(true));
-
         // Top Left
-        add(MeteorTextHud.WATERMARK, 4, 4, XAnchor.Left, YAnchor.Top);
-        add(MeteorTextHud.FPS, 4, 4 + h, XAnchor.Left, YAnchor.Top);
-        add(MeteorTextHud.TPS, 4, 4 + h * 2, XAnchor.Left, YAnchor.Top);
-        add(MeteorTextHud.PING, 4, 4 + h * 3, XAnchor.Left, YAnchor.Top);
-        add(MeteorTextHud.SPEED, 4, 4 + h * 4, XAnchor.Left, YAnchor.Top);
+        TextHud banner = (TextHud) MeteorTextHud.INFO.create();
+        banner.text.set("VL+");
+        banner.customScale.set(true);
+        banner.scale.set(1.2);
+        banner.background.set(true);
+        banner.backgroundColor.set(new SettingColor(89, 0, 155, 150));
+        add(banner, 4, 178, XAnchor.Left, YAnchor.Top);
+
+        add(MeteorTextHud.WATERMARK, 4, 202, XAnchor.Left, YAnchor.Top);
+        add(MeteorTextHud.FPS, 4, 222, XAnchor.Left, YAnchor.Top);
+        add(MeteorTextHud.TPS, 4, 242, XAnchor.Left, YAnchor.Top);
+        add(MeteorTextHud.PING, 4, 262, XAnchor.Left, YAnchor.Top);
 
         // Top Right
-        add(ActiveModulesHud.INFO, -4, 4, XAnchor.Right, YAnchor.Top);
+        add(ModuleInfosHud.INFO, -4, 4, XAnchor.Right, YAnchor.Top);
+        add(DpsHud.INFO, -4, 24, XAnchor.Right, YAnchor.Top);
 
-        // Bottom Right
-        add(MeteorTextHud.POSITION, -4, -4, XAnchor.Right, YAnchor.Bottom);
-        add(MeteorTextHud.OPPOSITE_POSITION, -4, -4 - h, XAnchor.Right, YAnchor.Bottom);
-        add(MeteorTextHud.ROTATION, -4, -4 - h * 2, XAnchor.Right, YAnchor.Bottom);
+        // Bottom Left
+        add(MeteorTextHud.ROTATION, 4, -4, XAnchor.Left, YAnchor.Bottom);
+
+        // Bottom Right (disabled by default)
+        TextHud position = (TextHud) MeteorTextHud.POSITION.info.create();
+        MeteorTextHud.POSITION.callback.accept(position);
+        position.toggle();
+        add(position, -4, -4, XAnchor.Right, YAnchor.Bottom);
+
+        // Top Center
+        add(LagNotifierHud.INFO, 11, 410, XAnchor.Center, YAnchor.Top);
+
+        // Bottom Center (disabled by default)
+        HudElement inventory = InventoryHud.INFO.create();
+        inventory.toggle();
+        add(inventory, 5, -264, XAnchor.Center, YAnchor.Bottom);
     }
 
     @EventHandler

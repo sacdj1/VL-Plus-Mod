@@ -16,6 +16,7 @@ import meteordevelopment.meteorclient.systems.macros.Macros;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.profiles.Profiles;
 import meteordevelopment.meteorclient.systems.proxies.Proxies;
+import meteordevelopment.meteorclient.systems.vlitems.VLItems;
 import meteordevelopment.meteorclient.systems.waypoints.Waypoints;
 import meteordevelopment.orbit.EventHandler;
 
@@ -50,6 +51,7 @@ public class Systems {
         add(new Profiles());
         add(new Proxies());
         add(new Hud());
+        add(new VLItems());
 
         MeteorClient.EVENT_BUS.subscribe(Systems.class);
     }

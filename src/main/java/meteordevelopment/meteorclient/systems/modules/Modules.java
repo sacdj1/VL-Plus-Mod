@@ -10,6 +10,7 @@ import com.mojang.serialization.Lifecycle;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.GameJoinedEvent;
+import meteordevelopment.meteorclient.utils.misc.VLPlusAdditions;
 import meteordevelopment.meteorclient.events.game.GameLeftEvent;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.meteor.ActiveModulesChangedEvent;
@@ -22,7 +23,6 @@ import meteordevelopment.meteorclient.systems.System;
 import meteordevelopment.meteorclient.systems.Systems;
 import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.systems.modules.misc.*;
-import meteordevelopment.meteorclient.systems.modules.misc.swarm.Swarm;
 import meteordevelopment.meteorclient.systems.modules.player.*;
 import meteordevelopment.meteorclient.systems.modules.render.*;
 import meteordevelopment.meteorclient.systems.modules.world.*;
@@ -67,6 +67,7 @@ public class Modules extends System<Modules> {
     private final List<Module> active = new ArrayList<>();
     private Module moduleToBind;
     private boolean awaitingKeyRelease = false;
+    private boolean devUnlocked = false;
 
     public Modules() {
         super("modules");
@@ -82,6 +83,13 @@ public class Modules extends System<Modules> {
         initRender();
         initWorld();
         initMisc();
+
+        if (isFirstInit) {
+            get(DiscordPresence.class).toggle();
+            get(Collisions.class).toggle();
+            get(NoRender.class).toggle();
+            get(HandView.class).toggle();
+        }
     }
 
     @Override
@@ -230,6 +238,28 @@ public class Modules extends System<Modules> {
         return moduleToBind != null;
     }
 
+    public boolean isDevUnlocked() {
+        return devUnlocked;
+    }
+
+    public boolean toggleDev() {
+        devUnlocked = !devUnlocked;
+        return devUnlocked;
+    }
+
+    public int disableHiddenActiveModules() {
+        int count = 0;
+
+        for (Module module : getAll()) {
+            if (module.hidden && module.isActive()) {
+                module.toggle();
+                count++;
+            }
+        }
+
+        return count;
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST)
     private void onKeyBinding(KeyEvent event) {
         if (event.action == KeyAction.Release && onBinding(true, event.key, event.modifiers)) event.cancel();
@@ -346,6 +376,8 @@ public class Modules extends System<Modules> {
         }
         tag.put("modules", modulesTag);
 
+        tag.putBoolean("devUnlocked", devUnlocked);
+
         return tag;
     }
 
@@ -359,6 +391,8 @@ public class Modules extends System<Modules> {
             Module module = get(moduleTag.getString("name"));
             if (module != null) module.fromTag(moduleTag);
         }
+
+        devUnlocked = tag.getBoolean("devUnlocked");
 
         return this;
     }
@@ -386,6 +420,11 @@ public class Modules extends System<Modules> {
             getGroup(removedModule.get().category).remove(removedModule.get());
         }
 
+        // Mark whether this module is a stock Meteor module or a VL+ addition - done here, after
+        // the module's own constructor has fully run, so it applies on top of any title override
+        // a module makes in its own constructor (e.g. ParticleColor's "Particle Adjust" rename).
+        module.title = VLPlusAdditions.modulePrefix(module.name) + module.title;
+
         // Add the module
         moduleInstances.put(module.getClass(), module);
         modules.add(module);
@@ -396,9 +435,11 @@ public class Modules extends System<Modules> {
     }
 
     private void initPlayer() {
+        add(new Click());
         add(new FakePlayer());
         add(new NoInteract());
         add(new NoRotate());
+        add(new Portals());
     }
 
     private void initRender() {
@@ -406,7 +447,9 @@ public class Modules extends System<Modules> {
         add(new BetterTooltips());
         add(new BlockSelection());
         add(new Blur());
+        add(new Breadcrumbs());
         add(new CameraTweaks());
+        add(new EntityInspector());
         add(new Freecam());
         add(new FreeLook());
         add(new Fullbright());
@@ -415,7 +458,12 @@ public class Modules extends System<Modules> {
         add(new ItemHighlight());
         add(new NoRender());
         add(new TimeChanger());
+        add(new TrueSight());
+        add(new Hitboxes());
+        add(new ParticleColor());
+        add(new XPBarAdjust());
         add(new WaypointsModule());
+        add(new Zoom());
     }
 
     private void initWorld() {
@@ -425,23 +473,22 @@ public class Modules extends System<Modules> {
     }
 
     private void initMisc() {
-        add(new Swarm());
         add(new AntiPacketKick());
         add(new AutoLog());
         add(new AutoReconnect());
         add(new AutoRespawn());
-        add(new BetterBeacons());
         add(new BetterChat());
-        add(new BookBot());
+        add(new BossDebug());
+        add(new EntityDataDumper());
+        add(new ItemDataDumper());
+        add(new HudSnapshotDumper());
         add(new DiscordPresence());
         add(new InventoryTweaks());
-        add(new MessageAura());
         add(new NameProtect());
         add(new Notifier());
-        add(new PacketCanceller());
         add(new ServerSpoof());
         add(new SoundBlocker());
-        add(new Spam());
+        add(new NoiseNotif());
     }
 
     public static class ModuleRegistry extends SimpleRegistry<Module> {

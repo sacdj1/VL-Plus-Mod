@@ -9,6 +9,7 @@ import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WindowScreen;
 import meteordevelopment.meteorclient.gui.utils.Cell;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
+import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WSection;
 import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
 import meteordevelopment.meteorclient.gui.widgets.containers.WVerticalList;
@@ -17,6 +18,7 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.settings.EntityTypeListSetting;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.Names;
+import meteordevelopment.meteorclient.utils.world.LegacyMobs;
 import net.minecraft.entity.EntityType;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Pair;
@@ -31,6 +33,7 @@ public class EntityTypeListSettingScreen extends WindowScreen {
 
     private WVerticalList list;
     private final WTextBox filter;
+    private boolean legacyOnly = true;
 
     private String filterText = "";
 
@@ -43,10 +46,21 @@ public class EntityTypeListSettingScreen extends WindowScreen {
         this.setting = setting;
 
         // Filter
-        filter = super.add(theme.textBox("")).minWidth(400).expandX().widget();
+        WHorizontalList header = super.add(theme.horizontalList()).expandX().widget();
+
+        filter = header.add(theme.textBox("")).minWidth(400).expandCellX().widget();
         filter.setFocused(true);
         filter.action = () -> {
             filterText = filter.get().trim();
+
+            list.clear();
+            initWidgets();
+        };
+
+        WCheckbox legacyCheckbox = header.add(theme.checkbox(legacyOnly)).right().widget();
+        header.add(theme.label("Legacy Mobs")).right();
+        legacyCheckbox.action = () -> {
+            legacyOnly = legacyCheckbox.checked;
 
             list.clear();
             initWidgets();
@@ -130,6 +144,8 @@ public class EntityTypeListSettingScreen extends WindowScreen {
         miscT = misc.add(theme.table()).expandX().widget();
 
         Consumer<EntityType<?>> entityTypeForEach = entityType -> {
+            if (legacyOnly && !setting.get().contains(entityType) && !LegacyMobs.isLegacy(Registries.ENTITY_TYPE.getId(entityType).getPath())) return;
+
             if (setting.filter == null || setting.filter.test(entityType)) {
                 switch (entityType.getSpawnGroup()) {
                     case CREATURE -> {

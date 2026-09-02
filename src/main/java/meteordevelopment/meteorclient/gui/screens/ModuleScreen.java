@@ -20,6 +20,7 @@ import meteordevelopment.meteorclient.gui.widgets.containers.WSection;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WFavorite;
+import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.utils.misc.NbtUtils;
@@ -105,6 +106,22 @@ public class ModuleScreen extends WindowScreen {
             bottom.add(theme.label("From: ")).right().widget();
             bottom.add(theme.label(module.addon.name).color(theme.textSecondaryColor())).right().widget();
         }
+
+        // Copy/Paste
+        WHorizontalList copyPaste = add(theme.horizontalList()).expandX().widget();
+        boolean spread = Config.get().spreadModuleCopyPasteButtons.get();
+
+        Cell<WButton> copyCell = copyPaste.add(theme.button(GuiRenderer.COPY));
+        if (spread) copyCell.expandCellX();
+        WButton copy = copyCell.widget();
+        copy.action = () -> toClipboard();
+
+        Cell<WButton> pasteCell = copyPaste.add(theme.button(GuiRenderer.PASTE));
+        if (spread) pasteCell.expandCellX();
+        WButton paste = pasteCell.widget();
+        paste.action = () -> {
+            if (fromClipboard()) reload();
+        };
     }
 
     @Override

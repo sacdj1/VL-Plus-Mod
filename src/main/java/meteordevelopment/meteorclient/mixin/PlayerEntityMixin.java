@@ -30,4 +30,7 @@ public abstract class PlayerEntityMixin extends LivingEntity {
             if (MeteorClient.EVENT_BUS.post(DropItemsEvent.get(stack)).isCancelled()) info.cancel();
         }
     }
+
+    // NameProtect disguising for getDisplayName() now happens via TeamMixin (Team.decorateName),
+    // which this method calls internally - a separate hook here would just double-process.
 }

@@ -12,6 +12,7 @@ import meteordevelopment.meteorclient.events.entity.player.FinishUsingItemEvent;
 import meteordevelopment.meteorclient.events.entity.player.StoppedUsingItemEvent;
 import meteordevelopment.meteorclient.events.game.ItemStackTooltipEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.misc.NameProtect;
 import meteordevelopment.meteorclient.systems.modules.render.BetterTooltips;
 import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.entity.LivingEntity;
@@ -24,6 +25,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
@@ -34,7 +36,14 @@ public abstract class ItemStackMixin {
     private List<Text> onGetTooltip(List<Text> original) {
         if (Utils.canUpdate()) {
             ItemStackTooltipEvent event = MeteorClient.EVENT_BUS.post(new ItemStackTooltipEvent((ItemStack) (Object) this, original));
-            return event.list();
+            original = event.list();
+        }
+
+        NameProtect nameProtect = Modules.get() != null ? Modules.get().get(NameProtect.class) : null;
+        if (nameProtect != null && nameProtect.isActive()) {
+            List<Text> disguised = new ArrayList<>(original.size());
+            for (Text line : original) disguised.add(nameProtect.replaceNameText(line));
+            return disguised;
         }
 
         return original;

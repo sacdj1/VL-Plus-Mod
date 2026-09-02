@@ -28,13 +28,13 @@ public class Macro implements ISerializable<Macro> {
 
     public Setting<String> name = sgGeneral.add(new StringSetting.Builder()
         .name("name")
-        .description("The name of the macro.")
+        .description("The name of the hotkey.")
         .build()
     );
 
     public Setting<List<String>> messages = sgGeneral.add(new StringListSetting.Builder()
         .name("messages")
-        .description("The messages for the macro to send.")
+        .description("The messages for the hotkey to send.")
         .onChanged(v -> dirty = true)
         .renderer(StarscriptTextBoxRenderer.class)
         .build()
@@ -42,7 +42,7 @@ public class Macro implements ISerializable<Macro> {
 
     public Setting<Keybind> keybind = sgGeneral.add(new KeybindSetting.Builder()
         .name("keybind")
-        .description("The bind to run the macro.")
+        .description("The bind to run the hotkey.")
         .build()
     );
 

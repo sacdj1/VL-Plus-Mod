@@ -29,27 +29,21 @@ public class Collisions extends Module {
     public final Setting<List<Block>> blocks = sgGeneral.add(new BlockListSetting.Builder()
         .name("blocks")
         .description("What blocks should be added collision box.")
+        .defaultValue(
+            Blocks.GLASS_PANE,
+            Blocks.WHITE_STAINED_GLASS_PANE, Blocks.ORANGE_STAINED_GLASS_PANE, Blocks.MAGENTA_STAINED_GLASS_PANE, Blocks.LIGHT_BLUE_STAINED_GLASS_PANE,
+            Blocks.YELLOW_STAINED_GLASS_PANE, Blocks.LIME_STAINED_GLASS_PANE, Blocks.PINK_STAINED_GLASS_PANE, Blocks.GRAY_STAINED_GLASS_PANE,
+            Blocks.LIGHT_GRAY_STAINED_GLASS_PANE, Blocks.CYAN_STAINED_GLASS_PANE, Blocks.PURPLE_STAINED_GLASS_PANE, Blocks.BLUE_STAINED_GLASS_PANE,
+            Blocks.BROWN_STAINED_GLASS_PANE, Blocks.GREEN_STAINED_GLASS_PANE, Blocks.RED_STAINED_GLASS_PANE, Blocks.BLACK_STAINED_GLASS_PANE,
+            Blocks.ANVIL, Blocks.CHIPPED_ANVIL, Blocks.DAMAGED_ANVIL
+        )
         .filter(this::blockFilter)
-        .build()
-    );
-
-    private final Setting<Boolean> magma = sgGeneral.add(new BoolSetting.Builder()
-        .name("magma")
-        .description("Prevents you from walking over magma blocks.")
-        .defaultValue(false)
         .build()
     );
 
     private final Setting<Boolean> unloadedChunks = sgGeneral.add(new BoolSetting.Builder()
         .name("unloaded-chunks")
         .description("Stops you from going into unloaded chunks.")
-        .defaultValue(false)
-        .build()
-    );
-
-    private final Setting<Boolean> ignoreBorder = sgGeneral.add(new BoolSetting.Builder()
-        .name("ignore-border")
-        .description("Removes world border collision.")
         .defaultValue(false)
         .build()
     );
@@ -63,10 +57,6 @@ public class Collisions extends Module {
         if (mc.world == null || mc.player == null) return;
         if (!event.state.getFluidState().isEmpty()) return;
         if (blocks.get().contains(event.state.getBlock())) {
-            event.shape = VoxelShapes.fullCube();
-        } else if (magma.get() && !mc.player.isSneaking()
-            && event.state.isAir()
-            && mc.world.getBlockState(event.pos.down()).getBlock() == Blocks.MAGMA_BLOCK) {
             event.shape = VoxelShapes.fullCube();
         }
     }
@@ -96,23 +86,6 @@ public class Collisions extends Module {
     }
 
     private boolean blockFilter(Block block) {
-        return (block instanceof AbstractFireBlock
-            || block instanceof AbstractPressurePlateBlock
-            || block instanceof TripwireBlock
-            || block instanceof TripwireHookBlock
-            || block instanceof CobwebBlock
-            || block instanceof CampfireBlock
-            || block instanceof SweetBerryBushBlock
-            || block instanceof CactusBlock
-            || block instanceof AbstractRailBlock
-            || block instanceof TrapdoorBlock
-            || block instanceof PowderSnowBlock
-            || block instanceof AbstractCauldronBlock
-            || block instanceof HoneyBlock
-        );
-    }
-
-    public boolean ignoreBorder() {
-        return isActive() && ignoreBorder.get();
+        return block instanceof PaneBlock || block instanceof AnvilBlock;
     }
 }

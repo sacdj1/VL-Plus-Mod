@@ -10,12 +10,15 @@ import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.hud.HudElement;
 import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
 import meteordevelopment.meteorclient.systems.hud.HudRenderer;
+import meteordevelopment.meteorclient.systems.vlitems.VLItemChoice;
 import meteordevelopment.meteorclient.utils.player.InvUtils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
-import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
+import net.minecraft.registry.RegistryWrapper;
+
+import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class ItemHud extends HudElement {
     public static final HudElementInfo<ItemHud> INFO = new HudElementInfo<>(Hud.GROUP, "item", "Displays the item count.", ItemHud::new);
@@ -25,10 +28,10 @@ public class ItemHud extends HudElement {
 
     // General
 
-    private final Setting<Item> item = sgGeneral.add(new ItemSetting.Builder()
+    private final Setting<VLItemChoice> item = sgGeneral.add(new VLItemSetting.Builder()
         .name("item")
-        .description("Item to display")
-        .defaultValue(Items.TOTEM_OF_UNDYING)
+        .description("Item to display - can also be a captured VL item.")
+        .defaultValue(VLItemChoice.of(Items.TOTEM_OF_UNDYING))
         .build()
     );
 
@@ -91,9 +94,18 @@ public class ItemHud extends HudElement {
 
     @Override
     public void render(HudRenderer renderer) {
-        ItemStack itemStack = new ItemStack(item.get(), InvUtils.find(item.get()).count());
+        VLItemChoice choice = item.get();
+        RegistryWrapper.WrapperLookup registries = mc.world != null ? mc.world.getRegistryManager() : null;
 
-        if (noneMode.get() == NoneMode.HideItem && itemStack.isEmpty()) {
+        int count = registries != null ? InvUtils.find(stack -> choice.matches(stack, registries)).count() : 0;
+
+        // Icon stack always stays at its natural count (1) - some CIT/CTM resource pack rules for
+        // unique-looking items key off count=1, and would silently fall back to the plain texture
+        // if the real inventory count (which can be > 1 once the item stacks) were written onto it.
+        // The count shown to the player is passed separately as a text overlay below.
+        ItemStack itemStack = registries != null ? choice.getIcon(registries) : choice.getBaseItem().getDefaultStack();
+
+        if (noneMode.get() == NoneMode.HideItem && count <= 0) {
             if (isInEditor()) {
                 renderer.line(x, y, x + getWidth(), y + getHeight(), Color.GRAY);
                 renderer.line(x, y + getHeight(), x + getWidth(), y, Color.GRAY);
@@ -103,34 +115,17 @@ public class ItemHud extends HudElement {
                 double x = this.x + border.get();
                 double y = this.y + border.get();
 
-                render(renderer, itemStack, (int) x, (int) y);
+                render(renderer, itemStack, count, (int) x, (int) y);
             });
         }
 
         if (background.get()) renderer.quad(x, y, getWidth(), getHeight(), backgroundColor.get());
     }
 
-    private void render(HudRenderer renderer, ItemStack itemStack, int x, int y) {
-        if (noneMode.get() == NoneMode.HideItem) {
-            renderer.item(itemStack, x, y, scale.get().floatValue(), true);
-            return;
-        }
-
-        String countOverride = null;
-        boolean resetToZero = false;
-
-        if (itemStack.isEmpty()) {
-            if (noneMode.get() == NoneMode.ShowCount)
-                countOverride = "0";
-
-            itemStack.setCount(1);
-            resetToZero = true;
-        }
+    private void render(HudRenderer renderer, ItemStack itemStack, int count, int x, int y) {
+        String countOverride = (count <= 0 && noneMode.get() == NoneMode.HideCount) ? null : String.valueOf(Math.max(count, 0));
 
         renderer.item(itemStack, x, y, scale.get().floatValue(), true, countOverride);
-
-        if (resetToZero)
-            itemStack.setCount(0);
     }
 
     public enum NoneMode {

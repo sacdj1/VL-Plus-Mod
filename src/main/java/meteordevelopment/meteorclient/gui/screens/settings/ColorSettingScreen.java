@@ -159,6 +159,18 @@ public class ColorSettingScreen extends WindowScreen {
             callAction();
         };
 
+        WButton copyButton = bottomList.add(theme.button(GuiRenderer.COPY)).widget();
+        copyButton.action = this::toClipboard;
+
+        WButton pasteButton = bottomList.add(theme.button(GuiRenderer.PASTE)).widget();
+        pasteButton.action = () -> {
+            if (fromClipboard()) {
+                setFromSetting();
+                setting.onChanged();
+                callAction();
+            }
+        };
+
         hueQuad.calculateFromSetting(false);
         brightnessQuad.calculateFromColor(setting.get(), false);
     }

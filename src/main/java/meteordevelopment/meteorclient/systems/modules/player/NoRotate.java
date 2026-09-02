@@ -5,23 +5,27 @@
 
 package meteordevelopment.meteorclient.systems.modules.player;
 
-import meteordevelopment.meteorclient.events.packets.PacketEvent;
-import meteordevelopment.meteorclient.mixin.PlayerPositionLookS2CPacketAccessor;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.orbit.EventHandler;
-import net.minecraft.network.packet.s2c.play.PlayerPositionLookS2CPacket;
 
 public class NoRotate extends Module {
+    private float lockedYaw, lockedPitch;
+
     public NoRotate() {
-        super(Categories.Player, "no-rotate", "Attempts to block rotations sent from server to client.");
+        super(Categories.Player, "no-rotate", "Locks your rotation client-side, regardless of what tries to change it.");
+    }
+
+    @Override
+    public void onActivate() {
+        lockedYaw = mc.player.getYaw();
+        lockedPitch = mc.player.getPitch();
     }
 
     @EventHandler
-    private void onReceivePacket(PacketEvent.Receive event) {
-        if (event.packet instanceof PlayerPositionLookS2CPacket) {
-            ((PlayerPositionLookS2CPacketAccessor) event.packet).setPitch(mc.player.getPitch());
-            ((PlayerPositionLookS2CPacketAccessor) event.packet).setYaw(mc.player.getYaw());
-        }
+    private void onTick(TickEvent.Post event) {
+        mc.player.setYaw(lockedYaw);
+        mc.player.setPitch(lockedPitch);
     }
 }

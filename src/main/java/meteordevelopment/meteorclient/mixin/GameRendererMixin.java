@@ -17,6 +17,7 @@ import meteordevelopment.meteorclient.renderer.Renderer3D;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
+import meteordevelopment.meteorclient.systems.modules.render.Zoom;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.NametagUtils;
 import meteordevelopment.meteorclient.utils.render.RenderUtils;
@@ -184,7 +185,8 @@ public abstract class GameRendererMixin {
 
     @Inject(method = "renderHand", at = @At("HEAD"), cancellable = true)
     private void renderHand(Camera camera, float tickDelta, Matrix4f matrix4f, CallbackInfo ci) {
-        if (!Modules.get().get(Freecam.class).renderHands())
+        if (!Modules.get().get(Freecam.class).renderHands() ||
+            !Modules.get().get(Zoom.class).renderHands())
             ci.cancel();
     }
 }

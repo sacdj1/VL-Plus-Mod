@@ -23,14 +23,14 @@ import java.util.stream.Collectors;
 
 public class MacroArgumentType implements ArgumentType<Macro> {
     private static final MacroArgumentType INSTANCE = new MacroArgumentType();
-    private static final DynamicCommandExceptionType NO_SUCH_MACRO = new DynamicCommandExceptionType(name -> Text.literal("Macro with name " + name + " doesn't exist."));
+    private static final DynamicCommandExceptionType NO_SUCH_MACRO = new DynamicCommandExceptionType(name -> Text.literal("Hotkey with name " + name + " doesn't exist."));
 
     public static MacroArgumentType create() {
         return INSTANCE;
     }
 
     public static Macro get(CommandContext<?> context) {
-        return context.getArgument("macro", Macro.class);
+        return context.getArgument("hotkey", Macro.class);
     }
 
     private MacroArgumentType() {}

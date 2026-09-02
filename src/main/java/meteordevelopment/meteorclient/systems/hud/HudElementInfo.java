@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.systems.hud;
 
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.misc.VLPlusAdditions;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -25,7 +26,7 @@ public class HudElementInfo<T extends HudElement> {
     public HudElementInfo(HudGroup group, String name, String title, String description, Supplier<T> factory) {
         this.group = group;
         this.name = name;
-        this.title = title;
+        this.title = VLPlusAdditions.hudElementPrefix(name) + title;
         this.description = description;
 
         this.factory = factory;

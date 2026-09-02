@@ -5,7 +5,9 @@
 
 package meteordevelopment.meteorclient.mixin;
 
+import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.render.Hitboxes;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.utils.entity.fakeplayer.FakePlayerEntity;
 import net.minecraft.client.render.Camera;
@@ -36,6 +38,31 @@ public abstract class EntityRenderDispatcherMixin {
 
             if (cX == entity.getBlockX() && cZ == entity.getBlockZ() && (cY == entity.getBlockY() || cY == entity.getBlockY() + 1)) info.cancel();
         }
+    }
+
+    // Hitboxes module: general on/off list for hitbox rendering, gating the whole
+    // "this.renderHitboxes && ..." condition per-entity.
+    @ModifyExpressionValue(method = "render", at = @At(value = "FIELD", target = "Lnet/minecraft/client/render/entity/EntityRenderDispatcher;renderHitboxes:Z"))
+    private <E extends Entity> boolean onRenderHitboxesFlag(boolean original, E entity, double x, double y, double z, float yaw, float tickDelta, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light) {
+        if (!original || Modules.get() == null) return original;
+
+        Hitboxes hitboxes = Modules.get().get(Hitboxes.class);
+        if (!hitboxes.isActive()) return original;
+
+        return hitboxes.showHitbox(entity);
+    }
+
+    // Hitboxes module: force the hitbox-visibility check to ignore isInvisible() for entity types
+    // on the invisible-entity list - the "isInvisible()" call at ordinal 1 in render() is
+    // specifically the one gating hitbox rendering (ordinal 0 gates the shadow, left untouched).
+    @ModifyExpressionValue(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/entity/Entity;isInvisible()Z", ordinal = 1))
+    private <E extends Entity> boolean onIsInvisibleForHitbox(boolean original, E entity, double x, double y, double z, float yaw, float tickDelta, MatrixStack matrices, VertexConsumerProvider vertexConsumers, int light) {
+        if (!original || Modules.get() == null) return original;
+
+        Hitboxes hitboxes = Modules.get().get(Hitboxes.class);
+        if (!hitboxes.isActive()) return original;
+
+        return !hitboxes.showInvisibleHitbox(entity);
     }
 
     // Player model rendering in main menu

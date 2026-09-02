@@ -27,6 +27,7 @@ public class Commands {
         add(new DismountCommand());
         add(new DisconnectCommand());
         add(new DamageCommand());
+        add(new DevCommand());
         add(new DropCommand());
         add(new EnchantCommand());
         add(new FakePlayerCommand());
@@ -41,7 +42,6 @@ public class Commands {
         add(new ResetCommand());
         add(new SayCommand());
         add(new ServerCommand());
-        add(new SwarmCommand());
         add(new ToggleCommand());
         add(new SettingCommand());
         add(new SpectateCommand());
