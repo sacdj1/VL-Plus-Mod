@@ -10,7 +10,13 @@ import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.client.texture.NativeImageBackedTexture;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.ColorHelper;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.List;
 
 /**
@@ -24,6 +30,11 @@ import java.util.List;
  * (below) applies - it's the part that visually communicates the cooldown state.
  */
 public class XPBarAdjust extends Module {
+    public enum RenderStyle {
+        Colorize,
+        Solid
+    }
+
     public enum ReadyColorMode {
         Static,
         Rainbow,
@@ -40,10 +51,26 @@ public class XPBarAdjust extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgReady = settings.createGroup("Ready Color");
     private final SettingGroup sgRainbow = settings.createGroup("Ready Color (Rainbow)");
-    private final SettingGroup sgGradient = settings.createGroup("Ready Color (Gradient)");
+    private final SettingGroup sgGradient = settings.createGroup("Ready Color (Gradient / Flashing)");
     private final SettingGroup sgHueShift = settings.createGroup("Ready Color (Hue Shift)");
 
     // General
+
+    private final Setting<RenderStyle> renderStyle = sgGeneral.add(new EnumSetting.Builder<RenderStyle>()
+        .name("render-style")
+        .description("Colorize converts the bar's own texture (background and fill both) to grayscale, then tints it - the true, full-strength color shows, but the bar's own shape/shading/border still reads through instead of turning into a flat block. Solid replaces it with a completely flat, textureless rectangle of color instead.")
+        .defaultValue(RenderStyle.Colorize)
+        .build()
+    );
+
+    private final Setting<Void> regenerateTextures = sgGeneral.add(new ButtonSetting.Builder()
+        .name("regenerate-textures")
+        .description("Re-reads the bar's texture from your currently active resource pack for Colorize mode. Only needed if you switch resource packs while this module is active - it's read once and cached otherwise.")
+        .buttonText("Regenerate")
+        .action(this::invalidateGrayTextures)
+        .visible(() -> renderStyle.get() == RenderStyle.Colorize)
+        .build()
+    );
 
     private final Setting<Boolean> recolorBackground = sgGeneral.add(new BoolSetting.Builder()
         .name("recolor-background")
@@ -76,14 +103,29 @@ public class XPBarAdjust extends Module {
 
     private final Setting<SettingColor> notReadyColor = sgGeneral.add(new ColorSetting.Builder()
         .name("not-ready-color")
-        .description("Color while the cooldown is active (bar not empty). Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
+        .description("Color right after the cooldown is applied (bar full). Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
         .defaultValue(new SettingColor(255, 40, 40))
+        .build()
+    );
+
+    private final Setting<SettingColor> midColor = sgGeneral.add(new ColorSetting.Builder()
+        .name("mid-color")
+        .description("Color at half cooldown, same idea as the Ability Cooldown HUD element's Mid Color.")
+        .defaultValue(new SettingColor(255, 165, 0))
+        .visible(emptinessGradient::get)
+        .build()
+    );
+
+    private final Setting<Boolean> invertProgress = sgGeneral.add(new BoolSetting.Builder()
+        .name("invert-progress")
+        .description("Flips which end of the bar counts as \"ready\" for coloring purposes, in case your server's cooldown convention runs the opposite way from what this module assumes (0 = ready/empty, 1 = just-applied/full). Only affects color - the bar's fill width itself still just follows the server's real experience value.")
+        .defaultValue(false)
         .build()
     );
 
     private final Setting<Integer> overallAlpha = sgGeneral.add(new IntSetting.Builder()
         .name("overall-alpha")
-        .description("Final opacity of the whole recolor overlay (background and fill both), on top of each color's own alpha above - use that to control how strongly a given color blends in, and this to fade the whole effect uniformly.")
+        .description("Final opacity of the whole recolor overlay (background and fill both), on top of each color's own alpha above - use that to control how strongly a given color blends in, and this to fade the whole effect uniformly. Safe to leave at 255 in Colorize mode, since that mode preserves the bar's own shading regardless - lower this mainly if using Solid mode and it looks too flat.")
         .defaultValue(255)
         .range(0, 255)
         .sliderRange(0, 255)
@@ -199,6 +241,121 @@ public class XPBarAdjust extends Module {
         super(Categories.Render, "xp-bar-adjust", "Recolors the vanilla XP bar - useful on servers that repurpose it for an ability cooldown.");
     }
 
+    @Override
+    public void onActivate() {
+        invalidateGrayTextures();
+    }
+
+    // Colorize mode - the bar's own texture (whatever resource pack currently provides it) is read
+    // once via the resource manager, converted to a normalized grayscale copy, and registered as a
+    // new texture. Tinting a grayscale texture with setShaderColor multiplies cleanly to the exact
+    // target color at its brightest point while still preserving all the original shading/bevel -
+    // unlike tinting the original (already colored) texture, which can only ever darken toward the
+    // tint and never reach it, and unlike a flat solid overlay, which shows the color perfectly but
+    // erases the texture's shape entirely.
+    private static final Identifier BACKGROUND_SPRITE = Identifier.ofVanilla("hud/experience_bar_background");
+    private static final Identifier PROGRESS_SPRITE = Identifier.ofVanilla("hud/experience_bar_progress");
+
+    private boolean grayTexturesReady = false;
+    private Identifier grayBackgroundId, grayProgressId;
+    private int grayBackgroundWidth, grayBackgroundHeight, grayProgressWidth, grayProgressHeight;
+
+    private void invalidateGrayTextures() {
+        grayTexturesReady = false;
+    }
+
+    private void ensureGrayTextures() {
+        if (grayTexturesReady) return;
+        grayTexturesReady = true;
+
+        int[] backgroundSize = new int[2];
+        grayBackgroundId = generateGrayTexture(BACKGROUND_SPRITE, "xpbar_background_gray", backgroundSize);
+        grayBackgroundWidth = backgroundSize[0];
+        grayBackgroundHeight = backgroundSize[1];
+
+        int[] progressSize = new int[2];
+        grayProgressId = generateGrayTexture(PROGRESS_SPRITE, "xpbar_progress_gray", progressSize);
+        grayProgressWidth = progressSize[0];
+        grayProgressHeight = progressSize[1];
+    }
+
+    private Identifier generateGrayTexture(Identifier spriteId, String outName, int[] outSize) {
+        Identifier resourceId = Identifier.of(spriteId.getNamespace(), "textures/gui/sprites/" + spriteId.getPath() + ".png");
+
+        try (InputStream input = mc.getResourceManager().open(resourceId)) {
+            NativeImage original = NativeImage.read(input);
+            NativeImage gray = toGrayscale(original);
+            original.close();
+
+            outSize[0] = gray.getWidth();
+            outSize[1] = gray.getHeight();
+
+            Identifier id = Identifier.of("meteor-client", outName);
+            mc.getTextureManager().registerTexture(id, new NativeImageBackedTexture(gray));
+            return id;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private NativeImage toGrayscale(NativeImage src) {
+        int w = src.getWidth(), h = src.getHeight();
+
+        int maxLum = 1;
+        for (int y = 0; y < h; y++) {
+            for (int x = 0; x < w; x++) {
+                int pixel = src.getColor(x, y);
+                if (ColorHelper.Abgr.getAlpha(pixel) == 0) continue;
+
+                int lum = luminance(pixel);
+                if (lum > maxLum) maxLum = lum;
+            }
+        }
+
+        float scale = 255f / maxLum;
+
+        return src.applyToCopy(pixel -> {
+            int a = ColorHelper.Abgr.getAlpha(pixel);
+            int v = Math.min(255, Math.round(luminance(pixel) * scale));
+
+            return ColorHelper.Abgr.getAbgr(a, v, v, v);
+        });
+    }
+
+    private int luminance(int abgrPixel) {
+        return Math.round(0.299f * ColorHelper.Abgr.getRed(abgrPixel) + 0.587f * ColorHelper.Abgr.getGreen(abgrPixel) + 0.114f * ColorHelper.Abgr.getBlue(abgrPixel));
+    }
+
+    public RenderStyle getRenderStyle() {
+        return renderStyle.get();
+    }
+
+    public Identifier getBackgroundGrayTexture() {
+        ensureGrayTextures();
+        return grayBackgroundId;
+    }
+
+    public int getBackgroundGrayTextureWidth() {
+        return grayBackgroundWidth;
+    }
+
+    public int getBackgroundGrayTextureHeight() {
+        return grayBackgroundHeight;
+    }
+
+    public Identifier getProgressGrayTexture() {
+        ensureGrayTextures();
+        return grayProgressId;
+    }
+
+    public int getProgressGrayTextureWidth() {
+        return grayProgressWidth;
+    }
+
+    public int getProgressGrayTextureHeight() {
+        return grayProgressHeight;
+    }
+
     public boolean shouldRecolorFill() {
         return recolorFill.get();
     }
@@ -214,6 +371,8 @@ public class XPBarAdjust extends Module {
 
     /** Packed ARGB for the fill overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getFillOverlayArgb(float progress) {
+        if (invertProgress.get()) progress = 1f - progress;
+
         return toOverlayArgb(getColor(progress));
     }
 
@@ -230,8 +389,9 @@ public class XPBarAdjust extends Module {
 
         if (!emptinessGradient.get()) return progress <= 0.0001f ? ready : notReadyColor.get();
 
-        float t = 1f - progress;
-        return lerp(notReadyColor.get(), ready, t);
+        if (progress <= 0.5f) return lerp(ready, midColor.get(), progress / 0.5f);
+
+        return lerp(midColor.get(), notReadyColor.get(), (progress - 0.5f) / 0.5f);
     }
 
     private Color getReadyColor() {

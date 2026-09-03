@@ -24,6 +24,7 @@ import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.Entity;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -144,15 +145,13 @@ public abstract class InGameHudMixin {
     // XPBarAdjust module: the background/track is the always-full-width texture drawn first (this
     // is the static "track" - it never changes width with progress), the fill/progress texture is
     // drawn second, cropped to the current xp width, and is the part that actually grows/shrinks.
-    // Rather than multiply-tinting the vanilla texture's own baked-in color (which washes out and
-    // desaturates whatever color is configured, since a shader color multiply can only ever darken
-    // toward the tint, never truly replace it), the vanilla texture is left untouched and a solid,
-    // alpha-blended overlay quad is drawn on top of it right after, at the same bounds - giving a
-    // true, undiluted color at full tint strength, while still letting the overlay's alpha fade
-    // back to reveal the vanilla look underneath at lower strength. Bounds are recomputed here from
-    // the same formula InGameHud itself uses (rather than captured via @Redirect) so this stays a
-    // plain @Inject - @Redirect claims exclusive ownership of the call it targets and can conflict
-    // with another mod's mixin on the same instruction, which @Inject doesn't.
+    // Two render styles: Colorize (default) draws the bar's own texture, converted to grayscale
+    // once and cached, then tinted via setShaderColor - a true, full-strength color that still
+    // preserves the texture's own shading/border instead of turning into a flat block. Solid just
+    // draws a plain alpha-blended color quad on top, no texture at all. Bounds are recomputed here
+    // from the same formula InGameHud itself uses (rather than captured via @Redirect) so this
+    // stays a plain @Inject - @Redirect claims exclusive ownership of the call it targets and can
+    // conflict with another mod's mixin on the same instruction, which @Inject doesn't.
     @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", shift = At.Shift.AFTER))
     private void onRenderExperienceBarBackground(DrawContext context, int x, CallbackInfo ci) {
         if (client.player == null || Modules.get() == null) return;
@@ -164,7 +163,7 @@ public abstract class InGameHudMixin {
         if (argb == 0) return;
 
         int y = context.getScaledWindowHeight() - 32 + 3;
-        context.fill(x, y, x + 182, y + 5, argb);
+        drawXpBarOverlay(context, module, argb, x, y, 182, 5, module.getBackgroundGrayTexture(), module.getBackgroundGrayTextureWidth(), module.getBackgroundGrayTextureHeight());
     }
 
     @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIIIIIII)V", shift = At.Shift.AFTER))
@@ -181,6 +180,22 @@ public abstract class InGameHudMixin {
         if (width <= 0) return;
 
         int y = context.getScaledWindowHeight() - 32 + 3;
-        context.fill(x, y, x + width, y + 5, argb);
+        drawXpBarOverlay(context, module, argb, x, y, width, 5, module.getProgressGrayTexture(), module.getProgressGrayTextureWidth(), module.getProgressGrayTextureHeight());
+    }
+
+    private void drawXpBarOverlay(DrawContext context, XPBarAdjust module, int argb, int x, int y, int width, int height, Identifier grayTexture, int texWidth, int texHeight) {
+        if (module.getRenderStyle() == XPBarAdjust.RenderStyle.Colorize && grayTexture != null) {
+            float a = ((argb >>> 24) & 0xFF) / 255f;
+            float r = ((argb >>> 16) & 0xFF) / 255f;
+            float g = ((argb >>> 8) & 0xFF) / 255f;
+            float b = (argb & 0xFF) / 255f;
+
+            RenderSystem.setShaderColor(r, g, b, a);
+            context.drawTexture(grayTexture, x, y, width, height, 0f, 0f, texWidth, texHeight, texWidth, texHeight);
+            RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+            return;
+        }
+
+        context.fill(x, y, x + width, y + height, argb);
     }
 }
