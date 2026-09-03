@@ -34,6 +34,7 @@ public abstract class BiomeColorsMixin {
         }
 
         SettingColor color = ambience.getBiomeBlockColor(ambience.biomeBlockColors.get(), world, pos);
+        if (color == null) color = ambience.getGlobalBlockColor(world.getBlockState(pos).getBlock(), pos);
         if (color != null) info.setReturnValue(Ambience.mixTint(color, base));
     }
 
@@ -53,6 +54,7 @@ public abstract class BiomeColorsMixin {
         }
 
         SettingColor color = ambience.getBiomeBlockColor(ambience.biomeBlockColors.get(), world, pos);
+        if (color == null) color = ambience.getGlobalBlockColor(world.getBlockState(pos).getBlock(), pos);
         if (color != null) info.setReturnValue(Ambience.mixTint(color, base));
     }
 
@@ -72,6 +74,7 @@ public abstract class BiomeColorsMixin {
         }
 
         SettingColor color = ambience.getBiomeBlockColor(ambience.biomeBlockColors.get(), world, pos);
+        if (color == null) color = ambience.getGlobalBlockColor(world.getBlockState(pos).getBlock(), pos);
         if (color != null) info.setReturnValue(Ambience.mixTint(color, base));
     }
 }

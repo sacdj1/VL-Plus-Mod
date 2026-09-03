@@ -223,20 +223,10 @@ public class ParticleColor extends Module {
 
     // Flashing
 
-    private final Setting<List<SettingColor>> flashColors = sgFlashing.add(new ColorListSetting.Builder()
+    private final Setting<List<TimedColorEntry>> flashColors = sgFlashing.add(new TimedColorListSetting.Builder()
         .name("colors")
-        .description("The colors to hard-switch between. Needs at least 2.")
-        .defaultValue(List.of(new SettingColor(255, 0, 0, 255), new SettingColor(0, 0, 255, 255)))
-        .visible(() -> hitDetectionEnabled.get() && colorMode.get() == ColorMode.Flashing)
-        .build()
-    );
-
-    private final Setting<Integer> flashTicks = sgFlashing.add(new IntSetting.Builder()
-        .name("flash-ticks")
-        .description("How many game ticks to hold each color for.")
-        .defaultValue(10)
-        .min(1)
-        .sliderRange(1, 40)
+        .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
+        .defaultValue(List.of(new TimedColorEntry(new SettingColor(255, 0, 0, 255), 10), new TimedColorEntry(new SettingColor(0, 0, 255, 255), 10)))
         .visible(() -> hitDetectionEnabled.get() && colorMode.get() == ColorMode.Flashing)
         .build()
     );
@@ -526,14 +516,23 @@ public class ParticleColor extends Module {
     }
 
     private Color getFlashColor() {
-        List<SettingColor> colors = flashColors.get();
-        if (colors.isEmpty()) return Color.WHITE;
-        if (colors.size() == 1) return colors.get(0);
+        List<TimedColorEntry> entries = flashColors.get();
+        if (entries.isEmpty()) return Color.WHITE;
+        if (entries.size() == 1) return entries.get(0).color;
+
+        long totalTicks = 0;
+        for (TimedColorEntry entry : entries) totalTicks += Math.max(1, entry.ticks);
 
         long tick = System.currentTimeMillis() / 50; // ~1 game tick, assuming a stable 20 TPS
-        int index = (int) ((tick / flashTicks.get()) % colors.size());
+        long pos = tick % totalTicks;
 
-        return colors.get(index);
+        long accumulated = 0;
+        for (TimedColorEntry entry : entries) {
+            accumulated += Math.max(1, entry.ticks);
+            if (pos < accumulated) return entry.color;
+        }
+
+        return entries.get(entries.size() - 1).color;
     }
 
     private Color getHueShiftColor() {

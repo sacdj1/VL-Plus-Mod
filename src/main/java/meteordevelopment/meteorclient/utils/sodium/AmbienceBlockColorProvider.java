@@ -67,14 +67,17 @@ public class AmbienceBlockColorProvider implements ColorProvider<BlockState> {
         return ((BlockView) level).getBlockState(pos).getBlock();
     }
 
-    // Regions take priority over per-biome colors - checked first.
+    // Regions take priority over per-biome colors, which take priority over global blocks - checked in that order.
     private List<WeightedColorEntry> colorsAt(Ambience ambience, LevelSlice level, BlockPos pos, Block targetBlock) {
         RegistryEntry<Biome> biome = SodiumBiomeUtil.getBiome(level, pos);
 
         List<WeightedColorEntry> colors = ambience.getRegionBlockColors(dimensionId(), pos, targetBlock, biome);
         if (colors != null) return colors;
 
-        return ambience.getBiomeBlockColors(ambience.biomeBlockColors.get(), biome, targetBlock);
+        colors = ambience.getBiomeBlockColors(ambience.biomeBlockColors.get(), biome, targetBlock);
+        if (colors != null) return colors;
+
+        return ambience.getGlobalBlockColors(targetBlock);
     }
 
     private static String dimensionId() {

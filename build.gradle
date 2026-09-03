@@ -131,6 +131,14 @@ tasks {
                 it.moduleGroup == "org.slf4j"
             }
         }
+
+        // This is only an intermediate input for remapJar below (which remaps it and writes the
+        // real, final jar back out under the plain, non-"-all" name in build/libs) - never a
+        // deliverable on its own. Keeping it out of build/libs entirely stops it from being
+        // mistaken for the finished jar: it looks installable (same classes, same size ballpark)
+        // but its bundled accesswidener/mixin refmaps are still in the unmapped "named" namespace,
+        // so Fabric Loader rejects it at boot with no crash report and no exception in the log.
+        destinationDirectory.set(layout.buildDirectory.dir("intermediates/shadow"))
     }
 
     remapJar {

@@ -5,22 +5,31 @@
 
 package meteordevelopment.meteorclient.utils.misc;
 
+import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.systems.config.Config;
+import meteordevelopment.meteorclient.systems.hud.Hud;
+import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
+import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.systems.modules.Modules;
 
 import java.util.Set;
 
 /**
  * Marks module/HUD element titles so it's clear at a glance whether something is stock Meteor
  * Client, a stock module VL+ has modified/extended, or a module/HUD element VL+ added from
- * scratch. Symbols are baked into the title once at construction time (module/HudElementInfo
- * registration happens once, at startup), so toggling Config's "show origin symbols" setting off
- * takes effect immediately for anything constructed after the toggle, but already-built titles
- * need a restart to fully clear - a restart-required setting, same as several other Config options.
+ * scratch - plus a separate Experimental marker for specific settings that aren't fully reliable
+ * yet, regardless of which of the three the module itself is.
+ *
+ * Prefixes are recomputed live (refreshAll(), wired to Config's onChanged) rather than baked in
+ * once at construction - the earlier version only applied the symbol once at startup, so toggling
+ * the Config setting mid-session (or even after a restart, depending on exact timing) didn't
+ * retroactively touch already-built titles.
  */
 public class VLPlusAdditions {
     public static final String METEOR_SYMBOL = "☄"; // comet - stock Meteor, untouched
     public static final String MODIFIED_SYMBOL = "✎"; // pencil - stock Meteor, modified/extended by VL+
     public static final String VLPLUS_SYMBOL = "✚"; // thick plus - added by VL+ from scratch
+    public static final String EXPERIMENTAL_SYMBOL = "⚠"; // warning - not fully reliable yet
 
     // Module ids (Module.name) added from scratch.
     private static final Set<String> NEW_MODULES = Set.of(
@@ -62,19 +71,43 @@ public class VLPlusAdditions {
         }
     }
 
-    public static String modulePrefix(String name) {
+    private static String originPrefix(String name, Set<String> newSet, Set<String> modifiedSet) {
         if (!symbolsEnabled()) return "";
 
-        if (NEW_MODULES.contains(name)) return VLPLUS_SYMBOL + " ";
-        if (MODIFIED_MODULES.contains(name)) return MODIFIED_SYMBOL + " ";
+        if (newSet.contains(name)) return VLPLUS_SYMBOL + " ";
+        if (modifiedSet.contains(name)) return MODIFIED_SYMBOL + " ";
         return METEOR_SYMBOL + " ";
     }
 
-    public static String hudElementPrefix(String name) {
-        if (!symbolsEnabled()) return "";
+    private static String stripOriginPrefix(String title) {
+        for (String symbol : new String[]{VLPLUS_SYMBOL, MODIFIED_SYMBOL, METEOR_SYMBOL}) {
+            String prefix = symbol + " ";
+            if (title.startsWith(prefix)) return title.substring(prefix.length());
+        }
 
-        if (NEW_HUD_ELEMENTS.contains(name)) return VLPLUS_SYMBOL + " ";
-        if (MODIFIED_HUD_ELEMENTS.contains(name)) return MODIFIED_SYMBOL + " ";
-        return METEOR_SYMBOL + " ";
+        return title;
+    }
+
+    public static void refreshModuleTitle(Module module) {
+        module.title = originPrefix(module.name, NEW_MODULES, MODIFIED_MODULES) + stripOriginPrefix(module.title);
+    }
+
+    public static void refreshHudElementTitle(HudElementInfo<?> info) {
+        info.title = originPrefix(info.name, NEW_HUD_ELEMENTS, MODIFIED_HUD_ELEMENTS) + stripOriginPrefix(info.title);
+    }
+
+    /** Call whenever Config's "show origin symbols" setting changes, to update already-built titles live. */
+    public static void refreshAll() {
+        Modules modules = Modules.get();
+        if (modules != null) for (Module module : modules.getList()) refreshModuleTitle(module);
+
+        Hud hud = Hud.get();
+        if (hud != null) for (HudElementInfo<?> info : hud.infos.values()) refreshHudElementTitle(info);
+    }
+
+    /** Prefixes a setting's own displayed name (not just its description) so it stands out as not fully reliable yet. */
+    public static <T> Setting<T> markExperimental(Setting<T> setting) {
+        setting.title = EXPERIMENTAL_SYMBOL + " " + setting.title;
+        return setting;
     }
 }

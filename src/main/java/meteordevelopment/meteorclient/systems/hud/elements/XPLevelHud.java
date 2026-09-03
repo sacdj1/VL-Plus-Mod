@@ -106,9 +106,9 @@ public class XPLevelHud extends HudElement {
 
     private final Setting<List<SettingColor>> colors = sgGradient.add(new ColorListSetting.Builder()
         .name("colors")
-        .description("The colors to cycle/flash between. Needs at least 2.")
+        .description("The colors to cycle between. Needs at least 2.")
         .defaultValue(List.of(new SettingColor(255, 0, 0), new SettingColor(0, 0, 255)))
-        .visible(() -> colorMode.get() == ColorMode.Gradient || colorMode.get() == ColorMode.Flashing)
+        .visible(() -> colorMode.get() == ColorMode.Gradient)
         .build()
     );
 
@@ -122,12 +122,10 @@ public class XPLevelHud extends HudElement {
         .build()
     );
 
-    private final Setting<Integer> flashTicks = sgGradient.add(new IntSetting.Builder()
-        .name("flash-ticks")
-        .description("How many game ticks to hold each color for, in Flashing mode.")
-        .defaultValue(10)
-        .min(1)
-        .sliderRange(1, 40)
+    private final Setting<List<TimedColorEntry>> flashColors = sgGradient.add(new TimedColorListSetting.Builder()
+        .name("flash-colors")
+        .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
+        .defaultValue(List.of(new TimedColorEntry(new SettingColor(255, 0, 0), 10), new TimedColorEntry(new SettingColor(0, 0, 255), 10)))
         .visible(() -> colorMode.get() == ColorMode.Flashing)
         .build()
     );
@@ -228,13 +226,22 @@ public class XPLevelHud extends HudElement {
     }
 
     private Color getFlashColor() {
-        List<SettingColor> list = colors.get();
-        if (list.isEmpty()) return Color.WHITE;
-        if (list.size() == 1) return list.get(0);
+        List<TimedColorEntry> entries = flashColors.get();
+        if (entries.isEmpty()) return Color.WHITE;
+        if (entries.size() == 1) return entries.get(0).color;
+
+        long totalTicks = 0;
+        for (TimedColorEntry entry : entries) totalTicks += Math.max(1, entry.ticks);
 
         long tick = System.currentTimeMillis() / 50; // ~1 game tick, assuming a stable 20 TPS
-        int index = (int) ((tick / flashTicks.get()) % list.size());
+        long pos = tick % totalTicks;
 
-        return list.get(index);
+        long accumulated = 0;
+        for (TimedColorEntry entry : entries) {
+            accumulated += Math.max(1, entry.ticks);
+            if (pos < accumulated) return entry.color;
+        }
+
+        return entries.get(entries.size() - 1).color;
     }
 }

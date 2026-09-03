@@ -8,8 +8,10 @@ package meteordevelopment.meteorclient.systems.modules.world;
 import meteordevelopment.meteorclient.settings.AmbienceRegion;
 import meteordevelopment.meteorclient.settings.AmbienceRegionListSetting;
 import meteordevelopment.meteorclient.settings.BiomeBlockColorSetting;
+import meteordevelopment.meteorclient.settings.BlockColorMapSetting;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.ButtonSetting;
+import meteordevelopment.meteorclient.gui.screens.settings.BlockColorMapScreen;
 import meteordevelopment.meteorclient.gui.screens.settings.RegionListScreen;
 import meteordevelopment.meteorclient.settings.ColorSetting;
 import meteordevelopment.meteorclient.settings.Setting;
@@ -46,6 +48,7 @@ public class Ambience extends Module {
     private final SettingGroup sgWorld = settings.createGroup("World");
     private final SettingGroup sgBiome = settings.createGroup("Per-Biome Colors");
     private final SettingGroup sgRegions = settings.createGroup("Regions");
+    private final SettingGroup sgBlocks = settings.createGroup("Global Blocks");
 
     // Sky
 
@@ -264,6 +267,35 @@ public class Ambience extends Module {
         .build()
     );
 
+    // Global block overrides - not tied to any biome/region, apply everywhere a matching block
+    // shows up. Lowest priority of the three: a Region or Per-Biome entry for the same block wins.
+
+    public final Setting<Map<Block, List<WeightedColorEntry>>> globalBlockColors = sgBlocks.add(new BlockColorMapSetting.Builder()
+        .name("entries")
+        .description("Pick blocks and give each a color, applied everywhere regardless of biome or region. Give a block multiple colors to pick between them at random, weighted by percentage. Lower priority than Regions and Per-Biome Colors above.")
+        .onChanged(val -> reload())
+        .build()
+    );
+
+    // Hidden persisted state - toggled via checkboxes in the block list screen rather than shown
+    // as a raw setting, so a block can be switched off without losing its colors.
+    public final Setting<List<String>> disabledGlobalBlocks = sgBlocks.add(new StringListSetting.Builder()
+        .name("disabled-global-blocks")
+        .description("Internal - which globally-overridden blocks are toggled off.")
+        .visible(() -> false)
+        .build()
+    );
+
+    public final Setting<Void> manageGlobalBlocks = sgBlocks.add(new ButtonSetting.Builder()
+        .name("manage-global-blocks")
+        .description("Add, edit or remove globally overridden blocks.")
+        .buttonText("Manage Blocks")
+        .screen(theme -> new BlockColorMapScreen(theme, "Global", "Global", globalBlockColors.get(), this::reload,
+            this::isGlobalBlockEnabled,
+            (block, enabled) -> setGlobalBlockEnabled(block, enabled)))
+        .build()
+    );
+
     public Ambience() {
         super(Categories.World, "ambience", "Change the color of various pieces of the environment.");
     }
@@ -409,6 +441,32 @@ public class Ambience extends Module {
         else if (!disabledBiomeBlocks.get().contains(key)) disabledBiomeBlocks.get().add(key);
 
         disabledBiomeBlocks.onChanged();
+        reload();
+    }
+
+    // Global block overrides - not tied to any biome/region.
+
+    public List<WeightedColorEntry> getGlobalBlockColors(Block block) {
+        return lookupColors(globalBlockColors.get(), block, this::isGlobalBlockEnabled);
+    }
+
+    public SettingColor getGlobalBlockColor(Block block, BlockPos pos) {
+        List<WeightedColorEntry> colors = getGlobalBlockColors(block);
+        if (colors == null) return null;
+
+        return pickWeightedEntry(colors, pos).color;
+    }
+
+    public boolean isGlobalBlockEnabled(Block block) {
+        return !disabledGlobalBlocks.get().contains(Registries.BLOCK.getId(block).toString());
+    }
+
+    public void setGlobalBlockEnabled(Block block, boolean enabled) {
+        String id = Registries.BLOCK.getId(block).toString();
+        if (enabled) disabledGlobalBlocks.get().remove(id);
+        else if (!disabledGlobalBlocks.get().contains(id)) disabledGlobalBlocks.get().add(id);
+
+        disabledGlobalBlocks.onChanged();
         reload();
     }
 

@@ -15,7 +15,6 @@ import meteordevelopment.meteorclient.systems.modules.render.Freecam;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.render.XPBarAdjust;
 import meteordevelopment.meteorclient.utils.Utils;
-import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
@@ -118,44 +117,46 @@ public abstract class InGameHudMixin {
         }
     }
 
-    // XPBarAdjust module: tints the background/track and filled/progress portions of the XP bar
-    // texture independently, bracketing each draw call separately since they're two separate
-    // drawGuiTexture overloads (background: 5-arg, progress: 9-arg) with independent toggles.
-    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V"))
-    private void onRenderExperienceBarBackgroundStart(DrawContext context, int x, CallbackInfo ci) {
+    // XPBarAdjust module: the background/track is the always-full-width texture drawn first (this
+    // is the static "track" - it never changes width with progress), the fill/progress texture is
+    // drawn second, cropped to the current xp width, and is the part that actually grows/shrinks.
+    // Rather than multiply-tinting the vanilla texture's own baked-in color (which washes out and
+    // desaturates whatever color is configured, since a shader color multiply can only ever darken
+    // toward the tint, never truly replace it), the vanilla texture is left untouched and a solid,
+    // alpha-blended overlay quad is drawn on top of it right after, at the same bounds - giving a
+    // true, undiluted color at full tint strength, while still letting the overlay's alpha fade
+    // back to reveal the vanilla look underneath at lower strength. Bounds are recomputed here from
+    // the same formula InGameHud itself uses (rather than captured via @Redirect) so this stays a
+    // plain @Inject - @Redirect claims exclusive ownership of the call it targets and can conflict
+    // with another mod's mixin on the same instruction, which @Inject doesn't.
+    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", shift = At.Shift.AFTER))
+    private void onRenderExperienceBarBackground(DrawContext context, int x, CallbackInfo ci) {
         if (client.player == null || Modules.get() == null) return;
 
         XPBarAdjust module = Modules.get().get(XPBarAdjust.class);
         if (!module.isActive() || !module.shouldRecolorBackground()) return;
 
-        Color color = module.getColor(client.player.experienceProgress);
-        RenderSystem.setShaderColor(color.r / 255f, color.g / 255f, color.b / 255f, color.a / 255f);
+        int argb = module.getBackgroundOverlayArgb();
+        if (argb == 0) return;
+
+        int y = context.getScaledWindowHeight() - 32 + 3;
+        context.fill(x, y, x + 182, y + 5, argb);
     }
 
-    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", shift = At.Shift.AFTER))
-    private void onRenderExperienceBarBackgroundEnd(DrawContext context, int x, CallbackInfo ci) {
-        if (client.player == null || Modules.get() == null) return;
-
-        XPBarAdjust module = Modules.get().get(XPBarAdjust.class);
-        if (module.isActive() && module.shouldRecolorBackground()) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-    }
-
-    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIIIIIII)V"))
-    private void onRenderExperienceBarProgressStart(DrawContext context, int x, CallbackInfo ci) {
+    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIIIIIII)V", shift = At.Shift.AFTER))
+    private void onRenderExperienceBarProgress(DrawContext context, int x, CallbackInfo ci) {
         if (client.player == null || Modules.get() == null) return;
 
         XPBarAdjust module = Modules.get().get(XPBarAdjust.class);
         if (!module.isActive() || !module.shouldRecolorFill()) return;
 
-        Color color = module.getColor(client.player.experienceProgress);
-        RenderSystem.setShaderColor(color.r / 255f, color.g / 255f, color.b / 255f, color.a / 255f);
-    }
+        int argb = module.getFillOverlayArgb(client.player.experienceProgress);
+        if (argb == 0) return;
 
-    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIIIIIII)V", shift = At.Shift.AFTER))
-    private void onRenderExperienceBarProgressEnd(DrawContext context, int x, CallbackInfo ci) {
-        if (client.player == null || Modules.get() == null) return;
+        int width = (int) (client.player.experienceProgress * 183f);
+        if (width <= 0) return;
 
-        XPBarAdjust module = Modules.get().get(XPBarAdjust.class);
-        if (module.isActive() && module.shouldRecolorFill()) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        int y = context.getScaledWindowHeight() - 32 + 3;
+        context.fill(x, y, x + width, y + 5, argb);
     }
 }

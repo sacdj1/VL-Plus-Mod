@@ -423,7 +423,7 @@ public class Modules extends System<Modules> {
         // Mark whether this module is a stock Meteor module or a VL+ addition - done here, after
         // the module's own constructor has fully run, so it applies on top of any title override
         // a module makes in its own constructor (e.g. ParticleColor's "Particle Adjust" rename).
-        module.title = VLPlusAdditions.modulePrefix(module.name) + module.title;
+        VLPlusAdditions.refreshModuleTitle(module);
 
         // Add the module
         moduleInstances.put(module.getClass(), module);

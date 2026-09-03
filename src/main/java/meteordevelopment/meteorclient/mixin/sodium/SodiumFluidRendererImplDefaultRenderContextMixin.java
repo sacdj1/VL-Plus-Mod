@@ -75,6 +75,7 @@ public abstract class SodiumFluidRendererImplDefaultRenderContextMixin {
 
         RegistryEntry<Biome> biome = SodiumBiomeUtil.getBiome(level, pos);
         SettingColor custom = ambience.getBiomeBlockColor(ambience.biomeBlockColors.get(), biome, Blocks.WATER, pos);
+        if (custom == null) custom = ambience.getGlobalBlockColor(Blocks.WATER, pos);
 
         if (custom != null) return custom.getPacked();
 

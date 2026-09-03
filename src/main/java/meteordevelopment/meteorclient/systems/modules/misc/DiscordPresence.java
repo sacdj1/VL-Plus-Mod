@@ -53,7 +53,7 @@ public class DiscordPresence extends Module {
     private final Setting<List<String>> line1Strings = sgLine1.add(new StringListSetting.Builder()
         .name("line-1-messages")
         .description("Messages used for the first line.")
-        .defaultValue("{player}", "{server}")
+        .defaultValue("Ventureland da best!")
         .onChanged(strings -> recompileLine1())
         .renderer(StarscriptTextBoxRenderer.class)
         .build()

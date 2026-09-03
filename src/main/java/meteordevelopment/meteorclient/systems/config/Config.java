@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.renderer.text.FontFace;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.System;
 import meteordevelopment.meteorclient.systems.Systems;
+import meteordevelopment.meteorclient.utils.misc.VLPlusAdditions;
 import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.nbt.NbtCompound;
@@ -80,7 +81,7 @@ public class Config extends System<Config> {
     public final Setting<Boolean> customWindowTitle = sgVisual.add(new BoolSetting.Builder()
         .name("custom-window-title")
         .description("Show custom text in the window title.")
-        .defaultValue(false)
+        .defaultValue(true)
         .onModuleActivated(setting -> mc.updateWindowTitle())
         .onChanged(value -> mc.updateWindowTitle())
         .build()
@@ -104,8 +105,9 @@ public class Config extends System<Config> {
 
     public final Setting<Boolean> showOriginSymbols = sgVisual.add(new BoolSetting.Builder()
         .name("show-origin-symbols")
-        .description("Prefixes module/HUD element names with a symbol showing whether they're stock Meteor (☄), a stock one VL+ has modified (✎), or added by VL+ from scratch (✚). Symbols are set once at startup, so turning this off fully clears them after a restart.")
+        .description("Prefixes module/HUD element names with a symbol showing whether they're stock Meteor (☄), a stock one VL+ has modified (✎), or added by VL+ from scratch (✚).")
         .defaultValue(true)
+        .onChanged(value -> VLPlusAdditions.refreshAll())
         .build()
     );
 

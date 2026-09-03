@@ -8,6 +8,7 @@ package meteordevelopment.meteorclient.systems.modules.misc;
 import com.mojang.authlib.GameProfile;
 import meteordevelopment.meteorclient.gui.screens.DisguisedPlayersScreen;
 import meteordevelopment.meteorclient.mixin.ChatHudAccessor;
+import meteordevelopment.meteorclient.utils.misc.VLPlusAdditions;
 import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.ButtonSetting;
 import meteordevelopment.meteorclient.settings.EnumSetting;
@@ -124,12 +125,12 @@ public class NameProtect extends Module {
         .build()
     );
 
-    private final Setting<Boolean> rankColors = sgRanks.add(new BoolSetting.Builder()
+    private final Setting<Boolean> rankColors = VLPlusAdditions.markExperimental(sgRanks.add(new BoolSetting.Builder()
         .name("rank")
         .description("Experimental - colors known server rank tags, like [VIP] or [Prem+], and the player name after them. Not fully reliable yet.")
         .defaultValue(true)
         .build()
-    );
+    ));
 
     private final Setting<Boolean> guildTags = sgRanks.add(new BoolSetting.Builder()
         .name("guild")
@@ -146,12 +147,12 @@ public class NameProtect extends Module {
         .build()
     );
 
-    private final Setting<Boolean> milestoneColors = sgRanks.add(new BoolSetting.Builder()
+    private final Setting<Boolean> milestoneColors = VLPlusAdditions.markExperimental(sgRanks.add(new BoolSetting.Builder()
         .name("milestone-symbol")
         .description("Experimental - colors milestone rank symbols (✣ Novice, ✽ Journeyman, ❋ Veteran, ❈ Elite). Not fully reliable yet.")
         .defaultValue(true)
         .build()
-    );
+    ));
 
     private String username = "If you see this, something is wrong.";
     private String selfName = NAME_BASE;

@@ -17,7 +17,7 @@ import java.util.function.Supplier;
 public class HudElementInfo<T extends HudElement> {
     public final HudGroup group;
     public final String name;
-    public final String title;
+    public String title;
     public final String description;
 
     public final Supplier<T> factory;
@@ -26,11 +26,13 @@ public class HudElementInfo<T extends HudElement> {
     public HudElementInfo(HudGroup group, String name, String title, String description, Supplier<T> factory) {
         this.group = group;
         this.name = name;
-        this.title = VLPlusAdditions.hudElementPrefix(name) + title;
+        this.title = title;
         this.description = description;
 
         this.factory = factory;
         this.presets = new ArrayList<>();
+
+        VLPlusAdditions.refreshHudElementTitle(this);
     }
 
     public HudElementInfo(HudGroup group, String name, String description, Supplier<T> factory) {

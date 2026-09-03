@@ -74,6 +74,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         factories.put(StringListSetting.class, (table, setting) -> stringListW(table, (StringListSetting) setting));
         factories.put(BlockPosSetting.class, (table, setting) -> blockPosW(table, (BlockPosSetting) setting));
         factories.put(ColorListSetting.class, (table, setting) -> colorListW(table, (ColorListSetting) setting));
+        factories.put(TimedColorListSetting.class, (table, setting) -> timedColorListW(table, (TimedColorListSetting) setting));
         factories.put(FontFaceSetting.class, (table, setting) -> fontW(table, (FontFaceSetting) setting));
         factories.put(Vector3dSetting.class, (table, setting) -> vector3dW(table, (Vector3dSetting) setting));
     }
@@ -468,6 +469,72 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
                 t.clear();
                 colorListWFill(t, setting);
+            };
+
+            t.row();
+            i++;
+        }
+    }
+
+    private void timedColorListW(WTable table, TimedColorListSetting setting) {
+        WTable tab = table.add(theme.table()).expandX().widget();
+        WTable t = tab.add(theme.table()).expandX().widget();
+        tab.row();
+
+        timedColorListWFill(t, setting);
+
+        WPlus add = tab.add(theme.plus()).expandCellX().widget();
+        add.action = () -> {
+            setting.get().add(new TimedColorEntry(new SettingColor(), 10));
+            setting.onChanged();
+
+            t.clear();
+            timedColorListWFill(t, setting);
+        };
+
+        reset(tab, setting, () -> {
+            t.clear();
+            timedColorListWFill(t, setting);
+        });
+    }
+
+    private void timedColorListWFill(WTable t, TimedColorListSetting setting) {
+        int i = 0;
+        for (TimedColorEntry entry : setting.get()) {
+            int _i = i;
+
+            t.add(theme.label(i + ":"));
+
+            t.add(theme.quad(entry.color)).widget();
+
+            WButton edit = t.add(theme.button(GuiRenderer.EDIT)).widget();
+            edit.action = () -> {
+                SettingColor defaultValue = WHITE;
+                if (_i < setting.getDefaultValue().size()) defaultValue = setting.getDefaultValue().get(_i).color;
+
+                ColorSetting set = new ColorSetting(setting.name, setting.description, defaultValue, settingColor -> {
+                    setting.get().get(_i).color.set(settingColor);
+                    setting.onChanged();
+                }, null, null);
+                set.set(setting.get().get(_i).color);
+                mc.setScreen(new ColorSettingScreen(theme, set));
+            };
+
+            t.add(theme.label("ticks:"));
+
+            WIntEdit ticks = t.add(theme.intEdit(entry.ticks, 1, Integer.MAX_VALUE, 1, 40, false)).expandCellX().widget();
+            ticks.action = () -> {
+                entry.ticks = ticks.get();
+                setting.onChanged();
+            };
+
+            WMinus remove = t.add(theme.minus()).expandCellX().right().widget();
+            remove.action = () -> {
+                setting.get().remove(_i);
+                setting.onChanged();
+
+                t.clear();
+                timedColorListWFill(t, setting);
             };
 
             t.row();

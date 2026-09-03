@@ -152,6 +152,23 @@ public class AbilityCooldownHud extends HudElement {
         .build()
     );
 
+    private final Setting<Boolean> hideWhenReady = sgGeneral.add(new BoolSetting.Builder()
+        .name("hide-when-ready")
+        .description("Hides this element entirely once the ability has been ready for a while, instead of leaving a full/ready-colored bar on screen indefinitely. Still shows while positioning it in the HUD editor.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> hideAfterTicks = sgGeneral.add(new IntSetting.Builder()
+        .name("hide-after-ticks")
+        .description("How many game ticks the ability must have been ready for before this element hides.")
+        .defaultValue(40)
+        .min(1)
+        .sliderRange(1, 200)
+        .visible(hideWhenReady::get)
+        .build()
+    );
+
     private final Setting<TextColorMode> textColorMode = sgGeneral.add(new EnumSetting.Builder<TextColorMode>()
         .name("text-color-mode")
         .description("White/Black: fixed color. Match Bar: same color the bar currently is - only really readable with Show Bar off, since otherwise the text matches its own background. Invert Bar: the visual opposite of the bar's current color, which stays readable either way.")
@@ -184,9 +201,9 @@ public class AbilityCooldownHud extends HudElement {
 
     private final Setting<List<SettingColor>> readyColors = sgColors.add(new ColorListSetting.Builder()
         .name("ready-colors")
-        .description("Colors to cycle/flash between when Ready Style is Gradient or Flashing. Needs at least 2.")
+        .description("Colors to cycle between when Ready Style is Gradient. Needs at least 2.")
         .defaultValue(List.of(new SettingColor(40, 255, 40), new SettingColor(40, 220, 255)))
-        .visible(() -> readyStyle.get() == ReadyStyle.Gradient || readyStyle.get() == ReadyStyle.Flashing)
+        .visible(() -> readyStyle.get() == ReadyStyle.Gradient)
         .build()
     );
 
@@ -218,12 +235,10 @@ public class AbilityCooldownHud extends HudElement {
         .build()
     );
 
-    private final Setting<Integer> flashTicks = sgColors.add(new IntSetting.Builder()
-        .name("flash-ticks")
-        .description("How many game ticks to hold each color for, in Flashing style.")
-        .defaultValue(10)
-        .min(1)
-        .sliderRange(1, 40)
+    private final Setting<List<TimedColorEntry>> flashColors = sgColors.add(new TimedColorListSetting.Builder()
+        .name("flash-colors")
+        .description("Colors to hard-switch between when Ready Style is Flashing, each with its own hold duration in game ticks. Needs at least 2.")
+        .defaultValue(List.of(new TimedColorEntry(new SettingColor(40, 255, 40), 10), new TimedColorEntry(new SettingColor(40, 220, 255), 10)))
         .visible(() -> readyStyle.get() == ReadyStyle.Flashing)
         .build()
     );
@@ -264,6 +279,7 @@ public class AbilityCooldownHud extends HudElement {
     private final Deque<Sample> recentSamples = new ArrayDeque<>();
     private long lastSampleTime = -1;
     private float lastProgress = -1;
+    private long readySinceMs = -1;
 
     public AbilityCooldownHud() {
         super(INFO);
@@ -292,6 +308,17 @@ public class AbilityCooldownHud extends HudElement {
         while (!recentSamples.isEmpty() && now - recentSamples.peekFirst().timestamp() > RATE_WINDOW_MS) recentSamples.pollFirst();
 
         boolean ready = progress <= 0.001f;
+
+        if (ready) {
+            if (readySinceMs == -1) readySinceMs = now;
+        } else {
+            readySinceMs = -1;
+        }
+
+        if (hideWhenReady.get() && !isInEditor() && readySinceMs != -1 && now - readySinceMs >= hideAfterTicks.get() * 50L) {
+            return;
+        }
+
         Color color = ready ? getReadyStyleColor() : gradientColor(progress);
 
         if (showBar.get()) {
@@ -345,7 +372,7 @@ public class AbilityCooldownHud extends HudElement {
         return switch (readyStyle.get()) {
             case Static -> readyColor.get();
             case Gradient -> cycleGradient(readyColors.get(), readyGradientSpeed.get());
-            case Flashing -> flashColor(readyColors.get(), flashTicks.get());
+            case Flashing -> flashColor(flashColors.get());
             case HueShift -> hueShiftColor();
         };
     }
@@ -373,14 +400,23 @@ public class AbilityCooldownHud extends HudElement {
         return lerp(colors.get(index), colors.get((index + 1) % colors.size()), t);
     }
 
-    private Color flashColor(List<SettingColor> colors, int ticks) {
-        if (colors.isEmpty()) return readyColor.get();
-        if (colors.size() == 1) return colors.get(0);
+    private Color flashColor(List<TimedColorEntry> entries) {
+        if (entries.isEmpty()) return readyColor.get();
+        if (entries.size() == 1) return entries.get(0).color;
+
+        long totalTicks = 0;
+        for (TimedColorEntry entry : entries) totalTicks += Math.max(1, entry.ticks);
 
         long tick = System.currentTimeMillis() / 50; // ~1 game tick, assuming a stable 20 TPS
-        int index = (int) ((tick / ticks) % colors.size());
+        long pos = tick % totalTicks;
 
-        return colors.get(index);
+        long accumulated = 0;
+        for (TimedColorEntry entry : entries) {
+            accumulated += Math.max(1, entry.ticks);
+            if (pos < accumulated) return entry.color;
+        }
+
+        return entries.get(entries.size() - 1).color;
     }
 
     private Color lerp(Color from, Color to, float t) {

@@ -48,7 +48,7 @@ public class WMeteorModule extends WPressable implements MeteorWidget {
     protected void onCalculateSize() {
         double pad = pad();
 
-        if (titleWidth == 0) titleWidth = theme.textWidth(module.title);
+        titleWidth = theme.textWidth(module.title);
 
         width = pad + titleWidth + pad;
         height = pad + theme.textHeight() + pad;
