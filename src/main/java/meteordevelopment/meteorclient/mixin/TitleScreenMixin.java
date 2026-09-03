@@ -18,6 +18,10 @@ import meteordevelopment.meteorclient.utils.render.prompts.YesNoPrompt;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.screen.TitleScreen;
+import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.client.network.ServerAddress;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import org.lwjgl.glfw.GLFW;
@@ -43,5 +47,21 @@ public abstract class TitleScreenMixin extends Screen {
         if (Config.get().titleScreenCredits.get() && button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
             if (TitleScreenCredits.onClicked(mouseX, mouseY)) info.setReturnValue(true);
         }
+    }
+
+    // Placed below the vanilla Options/Quit row (which sits at height/4 + 48 + 72 + 12) and above
+    // the copyright text in the bottom-right corner, matching the width/style of the Singleplayer
+    // button above it.
+    @Inject(method = "init", at = @At("TAIL"))
+    private void onInitQuickJoin(CallbackInfo ci) {
+        Config config = Config.get();
+        if (config == null || !config.titleScreenQuickJoin.get()) return;
+
+        int y = this.height / 4 + 48 + 72 + 12 + 24;
+
+        this.addDrawableChild(ButtonWidget.builder(Text.literal("Join VL+"), button -> {
+            ServerInfo server = new ServerInfo("Ventureland", "mc.ventureland.net", ServerInfo.ServerType.OTHER);
+            ConnectScreen.connect(this, this.client, ServerAddress.parse(server.address), server, false, null);
+        }).dimensions(this.width / 2 - 100, y, 200, 20).build());
     }
 }

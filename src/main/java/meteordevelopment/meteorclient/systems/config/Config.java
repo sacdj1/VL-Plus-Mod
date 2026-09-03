@@ -111,6 +111,13 @@ public class Config extends System<Config> {
         .build()
     );
 
+    public final Setting<Boolean> titleScreenQuickJoin = sgVisual.add(new BoolSetting.Builder()
+        .name("title-screen-quick-join")
+        .description("Adds a \"Join VL+\" button to the title screen that connects straight to mc.ventureland.net, skipping the multiplayer server list.")
+        .defaultValue(false)
+        .build()
+    );
+
     // Chat
 
     public final Setting<String> prefix = sgChat.add(new StringSetting.Builder()
