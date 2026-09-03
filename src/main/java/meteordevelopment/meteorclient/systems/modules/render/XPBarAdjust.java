@@ -83,14 +83,14 @@ public class XPBarAdjust extends Module {
     private final Setting<DynamicColorTarget> dynamicColorTarget = sgGeneral.add(new EnumSetting.Builder<DynamicColorTarget>()
         .name("cooldown-color-target")
         .description("Which surface(s) actually change color to show cooldown state (the ready/not-ready/mid gradient below). Whichever one(s) aren't picked here just shows Background Color, fixed, regardless of cooldown. Which surface is the visually dominant, meaningful part of the bar varies by server/resource pack - there's no way to know which without you telling me.")
-        .defaultValue(DynamicColorTarget.Fill)
+        .defaultValue(DynamicColorTarget.Background)
         .build()
     );
 
     private final Setting<SettingColor> backgroundColor = sgGeneral.add(new ColorSetting.Builder()
         .name("background-color")
         .description("Fixed tint for whichever surface(s) Cooldown Color Target above doesn't cover. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
-        .defaultValue(new SettingColor(251, 0, 255, 255))
+        .defaultValue(new SettingColor(42, 17, 0, 255))
         .visible(() -> recolorBackground.get() && dynamicColorTarget.get() != DynamicColorTarget.Both)
         .build()
     );
@@ -153,7 +153,7 @@ public class XPBarAdjust extends Module {
     private final Setting<ReadyColorMode> readyColorMode = sgReady.add(new EnumSetting.Builder<ReadyColorMode>()
         .name("mode")
         .description("How the ready color is picked, once the bar reaches empty.")
-        .defaultValue(ReadyColorMode.Flashing)
+        .defaultValue(ReadyColorMode.Gradient)
         .build()
     );
 
@@ -200,7 +200,7 @@ public class XPBarAdjust extends Module {
     private final Setting<List<SettingColor>> gradientColors = sgGradient.add(new ColorListSetting.Builder()
         .name("colors")
         .description("The colors to cycle between. Needs at least 2.")
-        .defaultValue(List.of(new SettingColor(40, 255, 40), new SettingColor(40, 200, 255)))
+        .defaultValue(List.of(new SettingColor(40, 131, 155), new SettingColor(40, 200, 255)))
         .visible(() -> readyColorMode.get() == ReadyColorMode.Gradient)
         .build()
     );
@@ -208,7 +208,7 @@ public class XPBarAdjust extends Module {
     private final Setting<Double> gradientSpeed = sgGradient.add(new DoubleSetting.Builder()
         .name("speed")
         .description("How fast the gradient cycles.")
-        .defaultValue(1)
+        .defaultValue(2.490823247625287)
         .min(0.1)
         .sliderRange(0.1, 10)
         .visible(() -> readyColorMode.get() == ReadyColorMode.Gradient)
