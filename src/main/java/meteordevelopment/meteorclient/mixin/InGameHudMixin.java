@@ -163,7 +163,7 @@ public abstract class InGameHudMixin {
         if (argb == 0) return;
 
         int y = context.getScaledWindowHeight() - 32 + 3;
-        drawXpBarOverlay(context, module, argb, x, y, 182, 5, module.getBackgroundGrayTexture(), module.getBackgroundGrayTextureWidth(), module.getBackgroundGrayTextureHeight());
+        drawXpBarOverlay(context, module, argb, x, y, 182, 182, 5, module.getBackgroundGrayTexture(), module.getBackgroundGrayTextureWidth(), module.getBackgroundGrayTextureHeight());
     }
 
     @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIIIIIII)V", shift = At.Shift.AFTER))
@@ -180,18 +180,27 @@ public abstract class InGameHudMixin {
         if (width <= 0) return;
 
         int y = context.getScaledWindowHeight() - 32 + 3;
-        drawXpBarOverlay(context, module, argb, x, y, width, 5, module.getProgressGrayTexture(), module.getProgressGrayTextureWidth(), module.getProgressGrayTextureHeight());
+        drawXpBarOverlay(context, module, argb, x, y, width, 183, 5, module.getProgressGrayTexture(), module.getProgressGrayTextureWidth(), module.getProgressGrayTextureHeight());
     }
 
-    private void drawXpBarOverlay(DrawContext context, XPBarAdjust module, int argb, int x, int y, int width, int height, Identifier grayTexture, int texWidth, int texHeight) {
+    // maxWidth is the logical full-bar width this specific draw call scales against (182 for the
+    // background, which is always drawn at that full width anyway; 183 for the fill, which is
+    // drawn at anywhere from 0 up to that as progress changes) - NOT the same thing as texWidth,
+    // the gray texture's own actual pixel dimensions, which can differ (e.g. a 2x resolution
+    // resource pack). Sampling a region proportional to width/maxWidth out of the texture, rather
+    // than always sampling the whole texture and stretching it into whatever width happens to be
+    // requested, is what keeps the fill's texture pattern from visibly warping as it grows/shrinks.
+    private void drawXpBarOverlay(DrawContext context, XPBarAdjust module, int argb, int x, int y, int width, int maxWidth, int height, Identifier grayTexture, int texWidth, int texHeight) {
         if (module.getRenderStyle() == XPBarAdjust.RenderStyle.Colorize && grayTexture != null) {
             float a = ((argb >>> 24) & 0xFF) / 255f;
             float r = ((argb >>> 16) & 0xFF) / 255f;
             float g = ((argb >>> 8) & 0xFF) / 255f;
             float b = (argb & 0xFF) / 255f;
 
+            int regionWidth = Math.max(1, Math.round(texWidth * (width / (float) maxWidth)));
+
             RenderSystem.setShaderColor(r, g, b, a);
-            context.drawTexture(grayTexture, x, y, width, height, 0f, 0f, texWidth, texHeight, texWidth, texHeight);
+            context.drawTexture(grayTexture, x, y, width, height, 0f, 0f, regionWidth, texHeight, texWidth, texHeight);
             RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
             return;
         }

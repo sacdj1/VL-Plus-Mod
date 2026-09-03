@@ -90,7 +90,7 @@ public class XPBarAdjust extends Module {
     private final Setting<SettingColor> backgroundColor = sgGeneral.add(new ColorSetting.Builder()
         .name("background-color")
         .description("Fixed tint for whichever surface(s) Cooldown Color Target above doesn't cover. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
-        .defaultValue(new SettingColor(255, 40, 40, 120))
+        .defaultValue(new SettingColor(251, 0, 255, 255))
         .visible(() -> recolorBackground.get() && dynamicColorTarget.get() != DynamicColorTarget.Both)
         .build()
     );
@@ -124,10 +124,18 @@ public class XPBarAdjust extends Module {
         .build()
     );
 
+    private final Setting<SettingColor> endColor = sgGeneral.add(new ColorSetting.Builder()
+        .name("end-color")
+        .description("Color the bar holds right as it approaches ready, before hard-switching to the Ready Color mode below the instant it actually reaches ready - a distinct \"almost there\" color instead of gradually blending straight into the ready effect.")
+        .defaultValue(new SettingColor(40, 255, 40))
+        .visible(emptinessGradient::get)
+        .build()
+    );
+
     private final Setting<Boolean> invertProgress = sgGeneral.add(new BoolSetting.Builder()
         .name("invert-progress")
         .description("Flips which end of the bar counts as \"ready\" for coloring purposes, in case your server's cooldown convention runs the opposite way from what this module assumes (0 = ready/empty, 1 = just-applied/full). Only affects color - the bar's fill width itself still just follows the server's real experience value.")
-        .defaultValue(false)
+        .defaultValue(true)
         .build()
     );
 
@@ -145,14 +153,14 @@ public class XPBarAdjust extends Module {
     private final Setting<ReadyColorMode> readyColorMode = sgReady.add(new EnumSetting.Builder<ReadyColorMode>()
         .name("mode")
         .description("How the ready color is picked, once the bar reaches empty.")
-        .defaultValue(ReadyColorMode.Static)
+        .defaultValue(ReadyColorMode.Flashing)
         .build()
     );
 
     private final Setting<SettingColor> readyStaticColor = sgReady.add(new ColorSetting.Builder()
         .name("color")
         .description("Color when ready.")
-        .defaultValue(new SettingColor(40, 255, 40))
+        .defaultValue(new SettingColor(255, 0, 242))
         .visible(() -> readyColorMode.get() == ReadyColorMode.Static)
         .build()
     );
@@ -404,11 +412,13 @@ public class XPBarAdjust extends Module {
 
     /** progress: 0 = empty/ready, 1 = full/just applied - matches PlayerEntity.experienceProgress directly. */
     private Color getColor(float progress) {
-        Color ready = getReadyColor();
+        if (!emptinessGradient.get()) return progress <= 0.0001f ? getReadyColor() : notReadyColor.get();
 
-        if (!emptinessGradient.get()) return progress <= 0.0001f ? ready : notReadyColor.get();
+        // Right at ready, hard-switch to the (possibly animated) ready color mode instead of
+        // gradually blending into it - End Color holds as its own distinct step just before that.
+        if (progress <= 0.0001f) return getReadyColor();
 
-        if (progress <= 0.5f) return lerp(ready, midColor.get(), progress / 0.5f);
+        if (progress <= 0.5f) return lerp(endColor.get(), midColor.get(), progress / 0.5f);
 
         return lerp(midColor.get(), notReadyColor.get(), (progress - 0.5f) / 0.5f);
     }
