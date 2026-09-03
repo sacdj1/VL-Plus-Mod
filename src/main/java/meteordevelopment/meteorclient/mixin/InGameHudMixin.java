@@ -159,7 +159,7 @@ public abstract class InGameHudMixin {
         XPBarAdjust module = Modules.get().get(XPBarAdjust.class);
         if (!module.isActive() || !module.shouldRecolorBackground()) return;
 
-        int argb = module.getBackgroundOverlayArgb();
+        int argb = module.getBackgroundOverlayArgb(client.player.experienceProgress);
         if (argb == 0) return;
 
         int y = context.getScaledWindowHeight() - 32 + 3;

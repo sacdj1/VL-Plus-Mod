@@ -5,11 +5,13 @@
 
 package meteordevelopment.meteorclient.systems.modules.render;
 
+import meteordevelopment.meteorclient.events.game.ResourcePacksReloadedEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
+import meteordevelopment.orbit.EventHandler;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.util.Identifier;
@@ -63,15 +65,6 @@ public class XPBarAdjust extends Module {
         .build()
     );
 
-    private final Setting<Void> regenerateTextures = sgGeneral.add(new ButtonSetting.Builder()
-        .name("regenerate-textures")
-        .description("Re-reads the bar's texture from your currently active resource pack for Colorize mode. Only needed if you switch resource packs while this module is active - it's read once and cached otherwise.")
-        .buttonText("Regenerate")
-        .action(this::invalidateGrayTextures)
-        .visible(() -> renderStyle.get() == RenderStyle.Colorize)
-        .build()
-    );
-
     private final Setting<Boolean> recolorBackground = sgGeneral.add(new BoolSetting.Builder()
         .name("recolor-background")
         .description("Recolors the empty/background part of the bar (the always-full-width track behind the fill) using Background Color below - it stays fixed, it doesn't change with progress like the fill does.")
@@ -81,9 +74,16 @@ public class XPBarAdjust extends Module {
 
     private final Setting<SettingColor> backgroundColor = sgGeneral.add(new ColorSetting.Builder()
         .name("background-color")
-        .description("Fixed tint for the background/track. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
+        .description("Fixed tint for whichever surface has the fixed-color role - normally the background/track, or the fill if Swap Background/Fill Roles is on. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
         .defaultValue(new SettingColor(255, 40, 40, 120))
         .visible(recolorBackground::get)
+        .build()
+    );
+
+    private final Setting<Boolean> swapBackgroundFillRoles = sgGeneral.add(new BoolSetting.Builder()
+        .name("swap-background-fill-roles")
+        .description("Swaps which surface gets the fixed color (Background Color) and which gets the ready/not-ready/mid gradient below. Some servers/resource packs make the always-full-width background the visually dominant part of the bar instead of the fill (or the other way around), so which one should actually react to cooldown state varies per server - there's no way to know which without you telling me.")
+        .defaultValue(false)
         .build()
     );
 
@@ -246,6 +246,13 @@ public class XPBarAdjust extends Module {
         invalidateGrayTextures();
     }
 
+    // Keeps the Colorize textures in sync with whatever resource pack is actually active, the same
+    // way Minecraft's own textures do - no manual "regenerate" step needed.
+    @EventHandler
+    private void onResourcePacksReloaded(ResourcePacksReloadedEvent event) {
+        invalidateGrayTextures();
+    }
+
     // Colorize mode - the bar's own texture (whatever resource pack currently provides it) is read
     // once via the resource manager, converted to a normalized grayscale copy, and registered as a
     // new texture. Tinting a grayscale texture with setShaderColor multiplies cleanly to the exact
@@ -364,16 +371,18 @@ public class XPBarAdjust extends Module {
         return recolorBackground.get();
     }
 
-    /** Packed ARGB for the fixed background/track overlay, or 0 (fully transparent - draw nothing) if faded out entirely. */
-    public int getBackgroundOverlayArgb() {
-        return toOverlayArgb(backgroundColor.get());
+    /** Packed ARGB for the background/track overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
+    public int getBackgroundOverlayArgb(float progress) {
+        return toOverlayArgb(swapBackgroundFillRoles.get() ? getColor(applyInvert(progress)) : backgroundColor.get());
     }
 
     /** Packed ARGB for the fill overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getFillOverlayArgb(float progress) {
-        if (invertProgress.get()) progress = 1f - progress;
+        return toOverlayArgb(swapBackgroundFillRoles.get() ? backgroundColor.get() : getColor(applyInvert(progress)));
+    }
 
-        return toOverlayArgb(getColor(progress));
+    private float applyInvert(float progress) {
+        return invertProgress.get() ? 1f - progress : progress;
     }
 
     private int toOverlayArgb(Color color) {
