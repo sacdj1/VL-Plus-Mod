@@ -45,6 +45,8 @@ public class ReaderRuleEditScreen extends WindowScreen {
         table.row();
         addCheckboxRow(table, "Chat", rule.watchChat, v -> rule.watchChat = v);
         addCheckboxRow(table, "Boss Bar", rule.watchBossBar, v -> rule.watchBossBar = v);
+        addCheckboxRow(table, "Scoreboard", rule.watchScoreboard, v -> rule.watchScoreboard = v);
+        addCheckboxRow(table, "Title/Subtitle", rule.watchTitle, v -> rule.watchTitle = v);
 
         table.add(theme.horizontalSeparator()).expandX();
         table.row();

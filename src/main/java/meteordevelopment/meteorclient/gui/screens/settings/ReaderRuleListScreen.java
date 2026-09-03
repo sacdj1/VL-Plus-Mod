@@ -99,6 +99,8 @@ public class ReaderRuleListScreen extends WindowScreen {
 
         if (rule.watchChat) sb.append("Chat ");
         if (rule.watchBossBar) sb.append("BossBar ");
+        if (rule.watchScoreboard) sb.append("Scoreboard ");
+        if (rule.watchTitle) sb.append("Title ");
         if (sb.isEmpty()) sb.append("(no sources) ");
 
         sb.append("- \"").append(rule.pattern.isEmpty() ? "(empty)" : rule.pattern).append("\"");

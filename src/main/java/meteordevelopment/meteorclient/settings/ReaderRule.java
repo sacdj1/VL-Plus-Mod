@@ -22,6 +22,8 @@ public class ReaderRule {
     // Sources
     public boolean watchChat = true;
     public boolean watchBossBar = false;
+    public boolean watchScoreboard = false;
+    public boolean watchTitle = false;
 
     // Match
     public String pattern = "";
@@ -63,6 +65,8 @@ public class ReaderRule {
         tag.putBoolean("enabled", enabled);
         tag.putBoolean("watchChat", watchChat);
         tag.putBoolean("watchBossBar", watchBossBar);
+        tag.putBoolean("watchScoreboard", watchScoreboard);
+        tag.putBoolean("watchTitle", watchTitle);
         tag.putString("pattern", pattern);
         tag.putBoolean("useRegex", useRegex);
         tag.putBoolean("notifySound", notifySound);
@@ -81,6 +85,8 @@ public class ReaderRule {
         rule.enabled = !tag.contains("enabled") || tag.getBoolean("enabled");
         rule.watchChat = tag.getBoolean("watchChat");
         rule.watchBossBar = tag.getBoolean("watchBossBar");
+        rule.watchScoreboard = tag.getBoolean("watchScoreboard");
+        rule.watchTitle = tag.getBoolean("watchTitle");
         rule.pattern = tag.getString("pattern");
         rule.useRegex = tag.getBoolean("useRegex");
         rule.notifySound = tag.getBoolean("notifySound");

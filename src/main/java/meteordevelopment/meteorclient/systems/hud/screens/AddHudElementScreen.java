@@ -20,7 +20,7 @@ import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.client.gui.DrawContext;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -55,9 +55,12 @@ public class AddHudElementScreen extends WindowScreen {
         add(searchBar).expandX();
         searchBar.setFocused(true);
 
-        // Group infos
+        // Group infos - LinkedHashMap so section order stays pinned to the stable, alphabetical
+        // order infos are encountered in below, instead of drifting between searches depending on
+        // which subset of groups happens to survive the current filter (a plain HashMap's
+        // iteration order isn't guaranteed stable across different key sets).
         Hud hud = Hud.get();
-        Map<HudGroup, List<Item>> grouped = new HashMap<>();
+        Map<HudGroup, List<Item>> grouped = new LinkedHashMap<>();
 
         for (HudElementInfo<?> info : hud.infos.values()) {
             if (info.hasPresets() && !searchBar.get().isEmpty()) {

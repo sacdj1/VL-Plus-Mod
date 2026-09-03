@@ -1,0 +1,7 @@
+{
+  "alerts_custom": {
+    "sounds": [
+      "meteor-client:alerts_custom"
+    ]
+  }
+}

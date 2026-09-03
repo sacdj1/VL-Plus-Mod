@@ -150,6 +150,16 @@ public class XPLevelHud extends HudElement {
         .build()
     );
 
+    private final Setting<Double> hueShiftRange = sgHueShift.add(new DoubleSetting.Builder()
+        .name("range")
+        .description("How far the hue swings from the base color, in degrees each direction, instead of cycling continuously - keeps it reading as a variation of the base color rather than looking like Rainbow mode. 180 = swings the full way around.")
+        .defaultValue(30)
+        .range(0, 180)
+        .sliderRange(0, 180)
+        .visible(() -> colorMode.get() == ColorMode.HueShift)
+        .build()
+    );
+
     public XPLevelHud() {
         super(INFO);
 
@@ -182,8 +192,9 @@ public class XPLevelHud extends HudElement {
         SettingColor base = hueShiftBaseColor.get();
         float[] hsb = java.awt.Color.RGBtoHSB(base.r, base.g, base.b, null);
 
-        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get() * 60.0;
-        float hue = (float) ((hsb[0] * 360.0 + time) % 360.0);
+        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get();
+        double offset = Math.sin(time) * hueShiftRange.get();
+        float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
 
         Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
         color.a = base.a;

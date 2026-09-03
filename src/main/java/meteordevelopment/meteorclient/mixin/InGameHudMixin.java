@@ -9,6 +9,8 @@ import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.mojang.blaze3d.systems.RenderSystem;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
+import meteordevelopment.meteorclient.events.render.RenderScoreboardEvent;
+import meteordevelopment.meteorclient.events.render.RenderTitleEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.misc.BetterChat;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
@@ -21,6 +23,7 @@ import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.entity.Entity;
 import net.minecraft.scoreboard.ScoreboardObjective;
+import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -33,6 +36,10 @@ import org.spongepowered.asm.mixin.injection.invoke.arg.Args;
 @Mixin(InGameHud.class)
 public abstract class InGameHudMixin {
     @Shadow @Final private MinecraftClient client;
+
+    @Shadow private Text title;
+
+    @Shadow private Text subtitle;
 
     @Shadow public abstract void clear();
 
@@ -75,6 +82,15 @@ public abstract class InGameHudMixin {
         if (Modules.get().get(NoRender.class).noVignette()) ci.cancel();
     }
 
+    // Reader Notif (NoiseNotif module): lets rules watch the scoreboard sidebar's title and score
+    // lines. Declared before the NoRender cancel hook below so it still fires even if that one
+    // cancels the callback - same-point injectors run in declaration order (this mixin API
+    // predates @Inject's "order" field, so that's the only ordering control available).
+    @Inject(method = "renderScoreboardSidebar(Lnet/minecraft/client/gui/DrawContext;Lnet/minecraft/scoreboard/ScoreboardObjective;)V", at = @At("HEAD"))
+    private void onRenderScoreboardSidebarForReaderNotif(DrawContext context, ScoreboardObjective objective, CallbackInfo ci) {
+        MeteorClient.EVENT_BUS.post(RenderScoreboardEvent.get(objective));
+    }
+
     @Inject(method = "renderScoreboardSidebar(Lnet/minecraft/client/gui/DrawContext;Lnet/minecraft/scoreboard/ScoreboardObjective;)V", at = @At("HEAD"), cancellable = true)
     private void onRenderScoreboardSidebar(DrawContext context, ScoreboardObjective objective, CallbackInfo ci) {
         if (Modules.get().get(NoRender.class).noScoreboard()) ci.cancel();
@@ -98,6 +114,14 @@ public abstract class InGameHudMixin {
     @Inject(method = "renderCrosshair", at = @At("HEAD"), cancellable = true)
     private void onRenderCrosshair(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
         if (Modules.get().get(NoRender.class).noCrosshair()) ci.cancel();
+    }
+
+    // Reader Notif (NoiseNotif module): lets rules watch the title/subtitle text - only posted
+    // while one is actually showing, same as vanilla only renders it then. Declared before the
+    // NoRender cancel hook below so it still fires even if that one cancels the callback.
+    @Inject(method = "renderTitleAndSubtitle", at = @At("HEAD"))
+    private void onRenderTitleForReaderNotif(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        if (title != null) MeteorClient.EVENT_BUS.post(RenderTitleEvent.get(title, subtitle));
     }
 
     @Inject(method = "renderTitleAndSubtitle", at = @At("HEAD"), cancellable = true)

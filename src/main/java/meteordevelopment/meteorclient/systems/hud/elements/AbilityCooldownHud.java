@@ -225,6 +225,16 @@ public class AbilityCooldownHud extends HudElement {
         .build()
     );
 
+    private final Setting<Double> hueShiftRange = sgColors.add(new DoubleSetting.Builder()
+        .name("hue-shift-range")
+        .description("How far the hue swings from the base color, in degrees each direction, instead of cycling continuously - keeps it reading as a variation of the base color rather than looking like Gradient/Rainbow. 180 = swings the full way around.")
+        .defaultValue(30)
+        .range(0, 180)
+        .sliderRange(0, 180)
+        .visible(() -> readyStyle.get() == ReadyStyle.HueShift)
+        .build()
+    );
+
     private final Setting<Double> readyGradientSpeed = sgColors.add(new DoubleSetting.Builder()
         .name("ready-gradient-speed")
         .description("How fast Ready Colors cycles, in Gradient style.")
@@ -381,8 +391,9 @@ public class AbilityCooldownHud extends HudElement {
         SettingColor base = hueShiftBaseColor.get();
         float[] hsb = java.awt.Color.RGBtoHSB(base.r, base.g, base.b, null);
 
-        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get() * 60.0;
-        float hue = (float) ((hsb[0] * 360.0 + time) % 360.0);
+        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get();
+        double offset = Math.sin(time) * hueShiftRange.get();
+        float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
 
         Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
         color.a = base.a;

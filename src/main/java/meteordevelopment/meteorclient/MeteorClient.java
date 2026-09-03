@@ -23,6 +23,7 @@ import meteordevelopment.meteorclient.utils.PostInit;
 import meteordevelopment.meteorclient.utils.PreInit;
 import meteordevelopment.meteorclient.utils.ReflectInit;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.misc.VLSounds;
 import meteordevelopment.meteorclient.utils.misc.Version;
 import meteordevelopment.meteorclient.utils.misc.input.KeyAction;
 import meteordevelopment.meteorclient.utils.misc.input.KeyBinds;
@@ -78,6 +79,13 @@ public class MeteorClient implements ClientModInitializer {
     public void onInitializeClient() {
         if (INSTANCE == null) {
             INSTANCE = this;
+
+            // Registry entries must be added on this real, early Fabric entrypoint call - the
+            // rest of init below runs from a much later mixin hook inside MinecraftClient's own
+            // constructor (see the no-op-first-call pattern here), by which point vanilla's
+            // registries are already frozen and Registry.register throws IllegalStateException.
+            VLSounds.init();
+
             return;
         }
 
