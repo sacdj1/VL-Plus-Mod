@@ -192,7 +192,7 @@ public class XPBarAdjust extends Module {
         .name("transition")
         .description("Soft smoothly cycles through every hue. Hard jumps between a fixed set of hues with no blending.")
         .defaultValue(RainbowTransition.Soft)
-        .visible(() -> readyColorMode.get() == ReadyColorMode.Rainbow)
+        .visible(this::rainbowVisible)
         .build()
     );
 
@@ -202,7 +202,7 @@ public class XPBarAdjust extends Module {
         .defaultValue(6)
         .min(2)
         .sliderRange(2, 16)
-        .visible(() -> readyColorMode.get() == ReadyColorMode.Rainbow && rainbowTransition.get() == RainbowTransition.Hard)
+        .visible(() -> rainbowVisible() && rainbowTransition.get() == RainbowTransition.Hard)
         .build()
     );
 
@@ -212,7 +212,7 @@ public class XPBarAdjust extends Module {
         .defaultValue(1)
         .min(0.1)
         .sliderRange(0.1, 10)
-        .visible(() -> readyColorMode.get() == ReadyColorMode.Rainbow)
+        .visible(this::rainbowVisible)
         .build()
     );
 
@@ -222,17 +222,17 @@ public class XPBarAdjust extends Module {
         .name("colors")
         .description("The colors to cycle between. Needs at least 2.")
         .defaultValue(List.of(new SettingColor(40, 131, 155), new SettingColor(40, 200, 255)))
-        .visible(() -> readyColorMode.get() == ReadyColorMode.Gradient)
+        .visible(this::gradientVisible)
         .build()
     );
 
     private final Setting<Double> gradientSpeed = sgGradient.add(new DoubleSetting.Builder()
         .name("speed")
         .description("How fast the gradient cycles.")
-        .defaultValue(2.490823247625287)
+        .defaultValue(3)
         .min(0.1)
         .sliderRange(0.1, 10)
-        .visible(() -> readyColorMode.get() == ReadyColorMode.Gradient)
+        .visible(this::gradientVisible)
         .build()
     );
 
@@ -240,7 +240,7 @@ public class XPBarAdjust extends Module {
         .name("flash-colors")
         .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
         .defaultValue(List.of(new TimedColorEntry(new SettingColor(40, 255, 40), 10), new TimedColorEntry(new SettingColor(40, 200, 255), 10)))
-        .visible(() -> readyColorMode.get() == ReadyColorMode.Flashing)
+        .visible(this::flashingVisible)
         .build()
     );
 
@@ -250,7 +250,7 @@ public class XPBarAdjust extends Module {
         .name("base-color")
         .description("Starting color - its hue continuously rotates, keeping its saturation/brightness/alpha, unlike Rainbow which always uses full saturation/brightness regardless of the base color.")
         .defaultValue(new SettingColor(40, 255, 40))
-        .visible(() -> readyColorMode.get() == ReadyColorMode.HueShift)
+        .visible(this::hueShiftVisible)
         .build()
     );
 
@@ -260,7 +260,7 @@ public class XPBarAdjust extends Module {
         .defaultValue(1)
         .min(0.1)
         .sliderRange(0.1, 10)
-        .visible(() -> readyColorMode.get() == ReadyColorMode.HueShift)
+        .visible(this::hueShiftVisible)
         .build()
     );
 
@@ -270,9 +270,36 @@ public class XPBarAdjust extends Module {
         .defaultValue(30)
         .range(0, 180)
         .sliderRange(0, 180)
-        .visible(() -> readyColorMode.get() == ReadyColorMode.HueShift)
+        .visible(this::hueShiftVisible)
         .build()
     );
+
+    // These groups are shared: they show up if EITHER the Cooldown gradient's Ready Color Mode
+    // picked them (as the gradient's ready endpoint), or either surface's own Color Mode picked
+    // them directly (as that surface's whole animated color, independent of cooldown).
+    private boolean rainbowVisible() {
+        return readyColorMode.get() == ReadyColorMode.Rainbow
+            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Rainbow)
+            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.Rainbow);
+    }
+
+    private boolean gradientVisible() {
+        return readyColorMode.get() == ReadyColorMode.Gradient
+            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Gradient)
+            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.Gradient);
+    }
+
+    private boolean flashingVisible() {
+        return readyColorMode.get() == ReadyColorMode.Flashing
+            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Flashing)
+            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.Flashing);
+    }
+
+    private boolean hueShiftVisible() {
+        return readyColorMode.get() == ReadyColorMode.HueShift
+            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.HueShift)
+            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.HueShift);
+    }
 
     public XPBarAdjust() {
         super(Categories.Render, "xp-bar-adjust", "Recolors the vanilla XP bar - useful on servers that repurpose it for an ability cooldown.");
