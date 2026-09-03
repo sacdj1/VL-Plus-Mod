@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.utils.misc;
 
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.render.RenderBossBarEvent;
 import meteordevelopment.meteorclient.mixin.ClientPlayerInteractionManagerAccessor;
 import meteordevelopment.meteorclient.mixin.MinecraftClientAccessor;
 import meteordevelopment.meteorclient.pathing.PathManagers;
@@ -18,6 +19,7 @@ import meteordevelopment.meteorclient.utils.player.ChatUtils;
 import meteordevelopment.meteorclient.utils.player.PlayerUtils;
 import meteordevelopment.meteorclient.utils.world.Dimension;
 import meteordevelopment.meteorclient.utils.world.TickRate;
+import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.starscript.Script;
 import meteordevelopment.starscript.Section;
 import meteordevelopment.starscript.StandardLib;
@@ -68,9 +70,25 @@ public class MeteorStarscript {
 
     private static final BlockPos.Mutable BP = new BlockPos.Mutable();
 
+    // Kept up to date independently of any particular module's active state (RenderBossBarEvent
+    // fires regardless), so server.bossbar works for anything that reads it - e.g. Discord
+    // Presence - without depending on some other module (like Alerts) happening to be on. Not
+    // cleared when no boss bar is showing - holds the last seen text, same trade-off as other
+    // last-seen caches in this pack (e.g. Reader Notif's title/scoreboard dedup).
+    private static String currentBossBarText = "";
+
+    private static final class BossBarListener {
+        @EventHandler
+        private void onBossBarText(RenderBossBarEvent.BossText event) {
+            currentBossBarText = event.name.getString();
+        }
+    }
+
     @PreInit(dependencies = PathManagers.class)
     public static void init() {
         StandardLib.init(ss);
+
+        MeteorClient.EVENT_BUS.subscribe(new BossBarListener());
 
         // General
         ss.set("mc_version", SharedConstants.getGameVersion().getName());
@@ -182,6 +200,7 @@ public class MeteorStarscript {
             .set("time", () -> Value.string(Utils.getWorldTime()))
             .set("player_count", () -> Value.number(mc.getNetworkHandler() != null ? mc.getNetworkHandler().getPlayerList().size() : 0))
             .set("difficulty", () -> Value.string(mc.world != null ? mc.world.getDifficulty().getName() : ""))
+            .set("bossbar", () -> Value.string(currentBossBarText))
         );
     }
 

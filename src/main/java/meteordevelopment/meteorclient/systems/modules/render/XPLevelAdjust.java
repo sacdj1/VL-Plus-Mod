@@ -3,26 +3,26 @@
  * Copyright (c) Meteor Development.
  */
 
-package meteordevelopment.meteorclient.systems.hud.elements;
+package meteordevelopment.meteorclient.systems.modules.render;
 
 import meteordevelopment.meteorclient.renderer.text.FontFace;
 import meteordevelopment.meteorclient.settings.*;
-import meteordevelopment.meteorclient.systems.hud.Hud;
-import meteordevelopment.meteorclient.systems.hud.HudElement;
-import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
-import meteordevelopment.meteorclient.systems.hud.HudRenderer;
-import meteordevelopment.meteorclient.utils.render.CustomFontRenderer;
+import meteordevelopment.meteorclient.systems.modules.Categories;
+import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.util.math.MathHelper;
 
 import java.util.List;
 
-import static meteordevelopment.meteorclient.MeteorClient.mc;
-
-public class XPLevelHud extends HudElement {
-    public static final HudElementInfo<XPLevelHud> INFO = new HudElementInfo<>(Hud.GROUP, "xp-level", "Displays your XP level, with customizable coloring.", XPLevelHud::new);
-
+/**
+ * Recolors/restyles the vanilla XP level number itself (the number InGameHud draws above/inside
+ * the real XP bar) - the number equivalent of XPBarAdjust. Same feature set as the XP Level HUD
+ * element (On Zero behavior, By Value gradient coloring, a Max Level highlight, a per-element
+ * custom font), just applied to the real vanilla number in its normal on-screen position instead
+ * of a separately positioned HUD element.
+ */
+public class XPLevelAdjust extends Module {
     public enum ColorMode {
         Static,
         Rainbow,
@@ -57,32 +57,31 @@ public class XPLevelHud extends HudElement {
 
     private final Setting<ColorMode> colorMode = sgGeneral.add(new EnumSetting.Builder<ColorMode>()
         .name("color-mode")
-        .description("How the text is colored.")
+        .description("How the number is colored.")
         .defaultValue(ColorMode.Static)
         .build()
     );
 
     private final Setting<SettingColor> staticColor = sgGeneral.add(new ColorSetting.Builder()
         .name("color")
-        .description("Color of the text.")
-        .defaultValue(new SettingColor(255, 255, 255))
+        .description("Color of the number.")
+        .defaultValue(new SettingColor(128, 255, 32))
         .visible(() -> colorMode.get() == ColorMode.Static)
         .build()
     );
 
     private final Setting<Double> scale = sgGeneral.add(new DoubleSetting.Builder()
         .name("scale")
-        .description("Text scale.")
-        .defaultValue(2.0)
-        .min(0.5)
-        .sliderRange(0.5, 6)
-        .onChanged(v -> calculateSize())
+        .description("Size multiplier over vanilla's normal size.")
+        .defaultValue(1.0)
+        .min(0.1)
+        .sliderRange(0.1, 5)
         .build()
     );
 
     private final Setting<Boolean> shadow = sgGeneral.add(new BoolSetting.Builder()
         .name("shadow")
-        .description("Draws a drop shadow behind the text.")
+        .description("Draws a drop shadow behind the number.")
         .defaultValue(true)
         .build()
     );
@@ -150,7 +149,7 @@ public class XPLevelHud extends HudElement {
     private final Setting<SettingColor> hueShiftBaseColor = sgHueShift.add(new ColorSetting.Builder()
         .name("base-color")
         .description("Starting color - its hue continuously rotates, keeping its saturation/brightness/alpha, unlike Rainbow which always uses full saturation/brightness regardless of the base color.")
-        .defaultValue(new SettingColor(255, 255, 255))
+        .defaultValue(new SettingColor(128, 255, 32))
         .visible(() -> colorMode.get() == ColorMode.HueShift)
         .build()
     );
@@ -189,7 +188,7 @@ public class XPLevelHud extends HudElement {
 
     private final Setting<ZeroBehavior> zeroBehavior = sgZero.add(new EnumSetting.Builder<ZeroBehavior>()
         .name("on-zero")
-        .description("What to do once the level reaches 0, instead of just showing \"0\" like every other value.")
+        .description("What to do once the level reaches 0. Vanilla normally hides the number entirely at 0 - Show Zero draws over that and displays \"0\" like any other value.")
         .defaultValue(ZeroBehavior.ShowZero)
         .build()
     );
@@ -214,7 +213,7 @@ public class XPLevelHud extends HudElement {
 
     private final Setting<Boolean> highlightMax = sgMax.add(new BoolSetting.Builder()
         .name("highlight-max")
-        .description("Forces Max Color below once the level reaches Max Level (or Max Level Range below it), overriding Color Mode above entirely while it's showing - same idea as the XP Bar module's Ready Color hard-switch.")
+        .description("Forces Max Color below once the level reaches Max Level (or Max Level Range below it), overriding Color Mode above entirely while it's showing.")
         .defaultValue(false)
         .build()
     );
@@ -250,47 +249,49 @@ public class XPLevelHud extends HudElement {
 
     private final Setting<Boolean> useCustomFont = sgFont.add(new BoolSetting.Builder()
         .name("use-custom-font")
-        .description("Renders this element's text in its own chosen font, independent of the global Custom Font setting (or lack of one).")
+        .description("Renders the number in its own chosen font, independent of the global Custom Font setting (or lack of one).")
         .defaultValue(false)
         .build()
     );
 
     private final Setting<FontFace> font = sgFont.add(new FontFaceSetting.Builder()
         .name("font")
-        .description("Font to render this element's text in.")
+        .description("Font to render the number in.")
         .visible(useCustomFont::get)
         .build()
     );
 
-    public XPLevelHud() {
-        super(INFO);
-
-        calculateSize();
+    public XPLevelAdjust() {
+        super(Categories.Render, "xp-level-adjust", "Recolors/restyles the vanilla XP level number - useful on servers that repurpose it, or just to make it stand out.");
     }
 
-    private void calculateSize() {
-        setSize(30 * scale.get(), 9 * scale.get());
+    public boolean isHidden(int level) {
+        return level <= 0 && zeroBehavior.get() == ZeroBehavior.Hide;
     }
 
-    @Override
-    public void render(HudRenderer renderer) {
-        int level = mc.player != null ? mc.player.experienceLevel : 0;
+    public String getText(int level) {
+        return level <= 0 && zeroBehavior.get() == ZeroBehavior.CustomText ? zeroText.get() : String.valueOf(level);
+    }
+
+    public double getScale() {
+        return scale.get();
+    }
+
+    public boolean getShadow() {
+        return shadow.get();
+    }
+
+    public boolean useCustomFont() {
+        return useCustomFont.get() && font.get() != null;
+    }
+
+    public FontFace getFont() {
+        return font.get();
+    }
+
+    public Color getColor(int level) {
         boolean atZero = level <= 0;
 
-        if (atZero && zeroBehavior.get() == ZeroBehavior.Hide) return;
-
-        String text = atZero && zeroBehavior.get() == ZeroBehavior.CustomText ? zeroText.get() : String.valueOf(level);
-        Color color = getColor(level, atZero);
-
-        if (useCustomFont.get() && font.get() != null) {
-            CustomFontRenderer.render(font.get(), text, x, y, color, scale.get(), shadow.get());
-        }
-        else {
-            renderer.text(text, x, y, color, shadow.get(), scale.get());
-        }
-    }
-
-    private Color getColor(int level, boolean atZero) {
         if (atZero && zeroBehavior.get() == ZeroBehavior.DistinctColor) return zeroColor.get();
         if (highlightMax.get() && level >= maxLevel.get() - maxLevelRange.get()) return maxColor.get();
 

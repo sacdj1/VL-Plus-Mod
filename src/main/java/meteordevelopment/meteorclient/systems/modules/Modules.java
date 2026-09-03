@@ -462,6 +462,7 @@ public class Modules extends System<Modules> {
         add(new Hitboxes());
         add(new ParticleColor());
         add(new XPBarAdjust());
+        add(new XPLevelAdjust());
         add(new WaypointsModule());
         add(new Zoom());
     }

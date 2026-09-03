@@ -10,6 +10,7 @@ import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.hud.HudElement;
 import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
 import meteordevelopment.meteorclient.systems.hud.HudRenderer;
+import meteordevelopment.meteorclient.utils.misc.VLPlusAdditions;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.util.math.MathHelper;
@@ -61,8 +62,7 @@ public class AbilityCooldownHud extends HudElement {
     public enum ReadyStyle {
         Static,
         Gradient,
-        Flashing,
-        HueShift
+        Flashing
     }
 
     private record Sample(long timestamp, float progress) {
@@ -152,21 +152,21 @@ public class AbilityCooldownHud extends HudElement {
         .build()
     );
 
-    private final Setting<Boolean> invertProgress = sgGeneral.add(new BoolSetting.Builder()
+    private final Setting<Boolean> invertProgress = VLPlusAdditions.markExperimental(sgGeneral.add(new BoolSetting.Builder()
         .name("invert-progress")
-        .description("By default the bar is full right when the cooldown is applied and drains down to nothing as it becomes ready. Turning this on reverses that: it starts at nothing right when applied and fills up to full as it becomes ready. Affects color too, not just the fill amount, so the two always stay consistent with each other.")
+        .description("Reported behaving the same as Invert Fill Direction below on at least one setup - not yet root-caused, so treat this as unreliable for now. By default the bar is full right when the cooldown is applied and drains down to nothing as it becomes ready. Turning this on reverses that: it starts at nothing right when applied and fills up to full as it becomes ready. Affects color too, not just the fill amount, so the two always stay consistent with each other.")
         .defaultValue(false)
         .visible(showBar::get)
         .build()
-    );
+    ));
 
-    private final Setting<Boolean> invertFillDirection = sgGeneral.add(new BoolSetting.Builder()
+    private final Setting<Boolean> invertFillDirection = VLPlusAdditions.markExperimental(sgGeneral.add(new BoolSetting.Builder()
         .name("invert-fill-direction")
-        .description("Fills the bar from the right edge growing left, instead of the left edge growing right.")
+        .description("Reported behaving the same as Invert Progress above on at least one setup - not yet root-caused, so treat this as unreliable for now. Fills the bar from the right edge growing left, instead of the left edge growing right.")
         .defaultValue(false)
         .visible(showBar::get)
         .build()
-    );
+    ));
 
     private final Setting<Boolean> hideWhenReady = sgGeneral.add(new BoolSetting.Builder()
         .name("hide-when-ready")
@@ -199,6 +199,15 @@ public class AbilityCooldownHud extends HudElement {
         .build()
     );
 
+    private final Setting<Double> textScale = sgGeneral.add(new DoubleSetting.Builder()
+        .name("text-scale")
+        .description("Size multiplier for the percent/time text, independent of the bar's own width/height above.")
+        .defaultValue(1.0)
+        .min(0.1)
+        .sliderRange(0.1, 5)
+        .build()
+    );
+
     // Colors
 
     private final Setting<SettingColor> readyColor = sgColors.add(new ColorSetting.Builder()
@@ -220,34 +229,6 @@ public class AbilityCooldownHud extends HudElement {
         .description("Colors to cycle between when Ready Style is Gradient. Needs at least 2.")
         .defaultValue(List.of(new SettingColor(40, 255, 40), new SettingColor(40, 220, 255)))
         .visible(() -> readyStyle.get() == ReadyStyle.Gradient)
-        .build()
-    );
-
-    private final Setting<SettingColor> hueShiftBaseColor = sgColors.add(new ColorSetting.Builder()
-        .name("hue-shift-base-color")
-        .description("Starting color for Hue Shift style - its hue continuously rotates, keeping its saturation/brightness/alpha.")
-        .defaultValue(new SettingColor(40, 255, 40))
-        .visible(() -> readyStyle.get() == ReadyStyle.HueShift)
-        .build()
-    );
-
-    private final Setting<Double> hueShiftSpeed = sgColors.add(new DoubleSetting.Builder()
-        .name("hue-shift-speed")
-        .description("How fast the hue rotates, in Hue Shift style.")
-        .defaultValue(1)
-        .min(0.1)
-        .sliderRange(0.1, 10)
-        .visible(() -> readyStyle.get() == ReadyStyle.HueShift)
-        .build()
-    );
-
-    private final Setting<Double> hueShiftRange = sgColors.add(new DoubleSetting.Builder()
-        .name("hue-shift-range")
-        .description("How far the hue swings from the base color, in degrees each direction, instead of cycling continuously - keeps it reading as a variation of the base color rather than looking like Gradient/Rainbow. 180 = swings the full way around.")
-        .defaultValue(30)
-        .range(0, 180)
-        .sliderRange(0, 180)
-        .visible(() -> readyStyle.get() == ReadyStyle.HueShift)
         .build()
     );
 
@@ -362,8 +343,8 @@ public class AbilityCooldownHud extends HudElement {
         }
 
         String text = displayMode.get() == DisplayMode.Percent ? Math.round((1 - progress) * 100) + "%" : timeEstimate(progress);
-        double textWidth = renderer.textWidth(text);
-        double textHeight = renderer.textHeight();
+        double textWidth = renderer.textWidth(text, textScale.get());
+        double textHeight = renderer.textHeight(false, textScale.get());
 
         Color textColor = switch (textColorMode.get()) {
             case White -> Color.WHITE;
@@ -377,9 +358,10 @@ public class AbilityCooldownHud extends HudElement {
 
     private void drawText(HudRenderer renderer, String text, double x, double y, Color color) {
         OutlineColor outline = textOutline.get();
+        double scale = textScale.get();
 
         if (outline == OutlineColor.None) {
-            renderer.text(text, x, y, color, true);
+            renderer.text(text, x, y, color, true, scale);
             return;
         }
 
@@ -387,11 +369,11 @@ public class AbilityCooldownHud extends HudElement {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 if (dx == 0 && dy == 0) continue;
-                renderer.text(text, x + dx, y + dy, outlineColor, false);
+                renderer.text(text, x + dx, y + dy, outlineColor, false, scale);
             }
         }
 
-        renderer.text(text, x, y, color, false);
+        renderer.text(text, x, y, color, false, scale);
     }
 
     private Color gradientColor(float progress) {
@@ -406,21 +388,7 @@ public class AbilityCooldownHud extends HudElement {
             case Static -> readyColor.get();
             case Gradient -> cycleGradient(readyColors.get(), readyGradientSpeed.get());
             case Flashing -> flashColor(flashColors.get());
-            case HueShift -> hueShiftColor();
         };
-    }
-
-    private Color hueShiftColor() {
-        SettingColor base = hueShiftBaseColor.get();
-        float[] hsb = java.awt.Color.RGBtoHSB(base.r, base.g, base.b, null);
-
-        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get();
-        double offset = Math.sin(time) * hueShiftRange.get();
-        float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
-
-        Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
-        color.a = base.a;
-        return color;
     }
 
     private Color cycleGradient(List<SettingColor> colors, double speed) {

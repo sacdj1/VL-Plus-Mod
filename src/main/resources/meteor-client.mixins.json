@@ -140,6 +140,7 @@
     "ResourceReloadLoggerAccessor",
     "ScreenMixin",
     "SectionedEntityCacheAccessor",
+    "ServerListMixin",
     "ServerResourcePackLoaderMixin",
     "ShapeIndexBufferAccessor",
     "ShulkerBoxBlockMixin",

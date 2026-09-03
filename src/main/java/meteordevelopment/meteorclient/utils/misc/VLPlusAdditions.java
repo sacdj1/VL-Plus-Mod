@@ -36,6 +36,7 @@ public class VLPlusAdditions {
         "hitboxes",
         "particle-color",
         "xp-bar-adjust",
+        "xp-level-adjust",
         "noise-notif"
     );
 
@@ -51,12 +52,30 @@ public class VLPlusAdditions {
     private static final Set<String> NEW_HUD_ELEMENTS = Set.of(
         "ability-cooldown",
         "xp-level",
-        "reader-notif"
+        "reader-notif",
+        "vanilla-hotbar",
+        "vanilla-armor",
+        "vanilla-health",
+        "vanilla-hunger",
+        "vanilla-mount-health",
+        "vanilla-air"
     );
 
     // HudElementInfo ids (HudElementInfo.name) that originate upstream but have been modified.
     private static final Set<String> MODIFIED_HUD_ELEMENTS = Set.of(
         "item"
+    );
+
+    // HudElementInfo ids reported as not working correctly yet - shown with EXPERIMENTAL_SYMBOL
+    // in addition to (not instead of) their origin symbol above, since a whole element can be
+    // both "added by VL+" and "not fully reliable yet" at once.
+    private static final Set<String> EXPERIMENTAL_HUD_ELEMENTS = Set.of(
+        "vanilla-hotbar",
+        "vanilla-armor",
+        "vanilla-health",
+        "vanilla-hunger",
+        "vanilla-mount-health",
+        "vanilla-air"
     );
 
     private VLPlusAdditions() {
@@ -79,10 +98,23 @@ public class VLPlusAdditions {
         return METEOR_SYMBOL + " ";
     }
 
+    // Loops until no more known prefixes match, not just once - a HUD element can carry both an
+    // origin symbol AND the experimental symbol at once (see refreshHudElementTitle), so a single
+    // pass would only strip one of the two and the other would get baked into the "clean" title,
+    // accumulating a new origin symbol on top of it every subsequent refreshAll() call.
     private static String stripOriginPrefix(String title) {
-        for (String symbol : new String[]{VLPLUS_SYMBOL, MODIFIED_SYMBOL, METEOR_SYMBOL}) {
-            String prefix = symbol + " ";
-            if (title.startsWith(prefix)) return title.substring(prefix.length());
+        boolean strippedAny = true;
+
+        while (strippedAny) {
+            strippedAny = false;
+
+            for (String symbol : new String[]{VLPLUS_SYMBOL, MODIFIED_SYMBOL, METEOR_SYMBOL, EXPERIMENTAL_SYMBOL}) {
+                String prefix = symbol + " ";
+                if (title.startsWith(prefix)) {
+                    title = title.substring(prefix.length());
+                    strippedAny = true;
+                }
+            }
         }
 
         return title;
@@ -93,7 +125,10 @@ public class VLPlusAdditions {
     }
 
     public static void refreshHudElementTitle(HudElementInfo<?> info) {
-        info.title = originPrefix(info.name, NEW_HUD_ELEMENTS, MODIFIED_HUD_ELEMENTS) + stripOriginPrefix(info.title);
+        String prefix = originPrefix(info.name, NEW_HUD_ELEMENTS, MODIFIED_HUD_ELEMENTS);
+        if (symbolsEnabled() && EXPERIMENTAL_HUD_ELEMENTS.contains(info.name)) prefix += EXPERIMENTAL_SYMBOL + " ";
+
+        info.title = prefix + stripOriginPrefix(info.title);
     }
 
     /** Call whenever Config's "show origin symbols" setting changes, to update already-built titles live. */

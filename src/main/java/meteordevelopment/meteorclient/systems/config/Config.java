@@ -107,13 +107,28 @@ public class Config extends System<Config> {
         .name("show-origin-symbols")
         .description("Prefixes module/HUD element names with a symbol showing whether they're stock Meteor (☄), a stock one VL+ has modified (✎), or added by VL+ from scratch (✚).")
         .defaultValue(true)
-        .onChanged(value -> VLPlusAdditions.refreshAll())
+        .onChanged(value -> {
+            VLPlusAdditions.refreshAll();
+            // Saved immediately rather than only relying on the shutdown-hook save every other
+            // setting uses - reported not persisting, most likely because it was being toggled
+            // right before force-closing the game instead of a clean exit, which skips that hook
+            // entirely. This setting specifically gets its own eager save so a force-close can't
+            // lose it.
+            Config.get().save();
+        })
         .build()
     );
 
     public final Setting<Boolean> titleScreenQuickJoin = sgVisual.add(new BoolSetting.Builder()
         .name("title-screen-quick-join")
-        .description("Adds a \"Join VL+\" button to the title screen that connects straight to mc.ventureland.net, skipping the multiplayer server list.")
+        .description("Adds a \"Join Ventureland\" button to the title screen that connects straight to it, using whatever that server's own entry in the Multiplayer server list is currently configured as (name, resource pack policy, etc.) - that entry always exists there, even if never manually added.")
+        .defaultValue(false)
+        .build()
+    );
+
+    public final Setting<Boolean> autoJoinVentureland = sgVisual.add(new BoolSetting.Builder()
+        .name("auto-join-ventureland")
+        .description("Automatically connects to Ventureland the moment the title screen first appears after launching the game, using the same server list entry Title Screen Quick Join does. Only fires once per launch - returning to the title screen later (e.g. after disconnecting) won't trigger it again.")
         .defaultValue(false)
         .build()
     );

@@ -67,6 +67,14 @@ public class XPBarAdjust extends Module {
     private final SettingGroup sgRainbow = settings.createGroup("Ready Color (Rainbow)");
     private final SettingGroup sgGradient = settings.createGroup("Ready Color (Gradient / Flashing)");
     private final SettingGroup sgHueShift = settings.createGroup("Ready Color (Hue Shift)");
+    private final SettingGroup sgBackgroundRainbow = settings.createGroup("Background Color (Rainbow)");
+    private final SettingGroup sgBackgroundGradient = settings.createGroup("Background Color (Gradient / Flashing)");
+    private final SettingGroup sgBackgroundHueShift = settings.createGroup("Background Color (Hue Shift)");
+    private final SettingGroup sgFillRainbow = settings.createGroup("Fill Color (Rainbow)");
+    private final SettingGroup sgFillGradient = settings.createGroup("Fill Color (Gradient / Flashing)");
+    private final SettingGroup sgFillHueShift = settings.createGroup("Fill Color (Hue Shift)");
+    private final SettingGroup sgSound = settings.createGroup("Sound");
+    private final SettingGroup sgSmoothing = settings.createGroup("Smoothing");
 
     // General
 
@@ -86,7 +94,7 @@ public class XPBarAdjust extends Module {
 
     private final Setting<SurfaceColorMode> backgroundMode = sgGeneral.add(new EnumSetting.Builder<SurfaceColorMode>()
         .name("background-color-mode")
-        .description("How the background/track picks its color. Fixed: Background Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown - same idea as Ready Color Mode below, just applied here directly instead of only as that gradient's ready endpoint (and sharing those same Rainbow/Gradient/Flashing/HueShift settings, so picking the same mode for both surfaces shows them animating together).")
+        .description("How the background/track picks its color. Fixed: Background Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown, with its own dedicated Background Color (...) settings below - separate from Ready Color and from Fill Color's own copies of the same settings.")
         .defaultValue(SurfaceColorMode.Cooldown)
         .visible(recolorBackground::get)
         .build()
@@ -109,7 +117,7 @@ public class XPBarAdjust extends Module {
 
     private final Setting<SurfaceColorMode> fillMode = sgGeneral.add(new EnumSetting.Builder<SurfaceColorMode>()
         .name("fill-color-mode")
-        .description("How the fill/progress part picks its color. Fixed: Fill Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown.")
+        .description("How the fill/progress part picks its color. Fixed: Fill Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown, with its own dedicated Fill Color (...) settings below - separate from Ready Color and from Background Color's own copies of the same settings.")
         .defaultValue(SurfaceColorMode.Fixed)
         .visible(recolorFill::get)
         .build()
@@ -155,7 +163,7 @@ public class XPBarAdjust extends Module {
 
     private final Setting<Boolean> invertProgress = sgGeneral.add(new BoolSetting.Builder()
         .name("invert-progress")
-        .description("Flips which end of the bar counts as \"ready\" for coloring purposes, in case your server's cooldown convention runs the opposite way from what this module assumes (0 = ready/empty, 1 = just-applied/full). Only affects color - the bar's fill width itself still just follows the server's real experience value.")
+        .description("Flips which end of the bar counts as \"ready\". Affects both color and the rendered fill amount together: off, the bar drains from full down to empty as it becomes ready (matching the server's real experience value directly); on, it instead fills from empty up to full as it becomes ready.")
         .defaultValue(true)
         .build()
     );
@@ -192,7 +200,7 @@ public class XPBarAdjust extends Module {
         .name("transition")
         .description("Soft smoothly cycles through every hue. Hard jumps between a fixed set of hues with no blending.")
         .defaultValue(RainbowTransition.Soft)
-        .visible(this::rainbowVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.Rainbow)
         .build()
     );
 
@@ -202,7 +210,7 @@ public class XPBarAdjust extends Module {
         .defaultValue(6)
         .min(2)
         .sliderRange(2, 16)
-        .visible(() -> rainbowVisible() && rainbowTransition.get() == RainbowTransition.Hard)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.Rainbow && rainbowTransition.get() == RainbowTransition.Hard)
         .build()
     );
 
@@ -212,7 +220,7 @@ public class XPBarAdjust extends Module {
         .defaultValue(1)
         .min(0.1)
         .sliderRange(0.1, 10)
-        .visible(this::rainbowVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.Rainbow)
         .build()
     );
 
@@ -222,7 +230,7 @@ public class XPBarAdjust extends Module {
         .name("colors")
         .description("The colors to cycle between. Needs at least 2.")
         .defaultValue(List.of(new SettingColor(40, 131, 155), new SettingColor(40, 200, 255)))
-        .visible(this::gradientVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.Gradient)
         .build()
     );
 
@@ -232,7 +240,7 @@ public class XPBarAdjust extends Module {
         .defaultValue(3)
         .min(0.1)
         .sliderRange(0.1, 10)
-        .visible(this::gradientVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.Gradient)
         .build()
     );
 
@@ -240,7 +248,7 @@ public class XPBarAdjust extends Module {
         .name("flash-colors")
         .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
         .defaultValue(List.of(new TimedColorEntry(new SettingColor(40, 255, 40), 10), new TimedColorEntry(new SettingColor(40, 200, 255), 10)))
-        .visible(this::flashingVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.Flashing)
         .build()
     );
 
@@ -250,7 +258,7 @@ public class XPBarAdjust extends Module {
         .name("base-color")
         .description("Starting color - its hue continuously rotates, keeping its saturation/brightness/alpha, unlike Rainbow which always uses full saturation/brightness regardless of the base color.")
         .defaultValue(new SettingColor(40, 255, 40))
-        .visible(this::hueShiftVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.HueShift)
         .build()
     );
 
@@ -260,7 +268,7 @@ public class XPBarAdjust extends Module {
         .defaultValue(1)
         .min(0.1)
         .sliderRange(0.1, 10)
-        .visible(this::hueShiftVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.HueShift)
         .build()
     );
 
@@ -270,36 +278,209 @@ public class XPBarAdjust extends Module {
         .defaultValue(30)
         .range(0, 180)
         .sliderRange(0, 180)
-        .visible(this::hueShiftVisible)
+        .visible(() -> readyColorMode.get() == ReadyColorMode.HueShift)
         .build()
     );
 
-    // These groups are shared: they show up if EITHER the Cooldown gradient's Ready Color Mode
-    // picked them (as the gradient's ready endpoint), or either surface's own Color Mode picked
-    // them directly (as that surface's whole animated color, independent of cooldown).
-    private boolean rainbowVisible() {
-        return readyColorMode.get() == ReadyColorMode.Rainbow
-            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Rainbow)
-            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.Rainbow);
-    }
+    // Background Color (Rainbow) - fully independent of Ready Color (Rainbow) above and of Fill
+    // Color (Rainbow) below, even when Background Color Mode also picks Rainbow.
 
-    private boolean gradientVisible() {
-        return readyColorMode.get() == ReadyColorMode.Gradient
-            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Gradient)
-            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.Gradient);
-    }
+    private final Setting<RainbowTransition> backgroundRainbowTransition = sgBackgroundRainbow.add(new EnumSetting.Builder<RainbowTransition>()
+        .name("transition")
+        .description("Soft smoothly cycles through every hue. Hard jumps between a fixed set of hues with no blending.")
+        .defaultValue(RainbowTransition.Soft)
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Rainbow)
+        .build()
+    );
 
-    private boolean flashingVisible() {
-        return readyColorMode.get() == ReadyColorMode.Flashing
-            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Flashing)
-            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.Flashing);
-    }
+    private final Setting<Integer> backgroundRainbowSteps = sgBackgroundRainbow.add(new IntSetting.Builder()
+        .name("hard-steps")
+        .description("How many distinct hues to jump between, in Hard mode.")
+        .defaultValue(6)
+        .min(2)
+        .sliderRange(2, 16)
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Rainbow && backgroundRainbowTransition.get() == RainbowTransition.Hard)
+        .build()
+    );
 
-    private boolean hueShiftVisible() {
-        return readyColorMode.get() == ReadyColorMode.HueShift
-            || (recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.HueShift)
-            || (recolorFill.get() && fillMode.get() == SurfaceColorMode.HueShift);
-    }
+    private final Setting<Double> backgroundRainbowSpeed = sgBackgroundRainbow.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the rainbow cycles.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Rainbow)
+        .build()
+    );
+
+    // Background Color (Gradient / Flashing)
+
+    private final Setting<List<SettingColor>> backgroundGradientColors = sgBackgroundGradient.add(new ColorListSetting.Builder()
+        .name("colors")
+        .description("The colors to cycle between. Needs at least 2.")
+        .defaultValue(List.of(new SettingColor(40, 131, 155), new SettingColor(40, 200, 255)))
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<Double> backgroundGradientSpeed = sgBackgroundGradient.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the gradient cycles.")
+        .defaultValue(3)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<List<TimedColorEntry>> backgroundFlashColors = sgBackgroundGradient.add(new TimedColorListSetting.Builder()
+        .name("flash-colors")
+        .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
+        .defaultValue(List.of(new TimedColorEntry(new SettingColor(40, 255, 40), 10), new TimedColorEntry(new SettingColor(40, 200, 255), 10)))
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Flashing)
+        .build()
+    );
+
+    // Background Color (Hue Shift)
+
+    private final Setting<SettingColor> backgroundHueShiftBaseColor = sgBackgroundHueShift.add(new ColorSetting.Builder()
+        .name("base-color")
+        .description("Starting color - its hue continuously rotates, keeping its saturation/brightness/alpha, unlike Rainbow which always uses full saturation/brightness regardless of the base color.")
+        .defaultValue(new SettingColor(40, 255, 40))
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> backgroundHueShiftSpeed = sgBackgroundHueShift.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the hue rotates.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> backgroundHueShiftRange = sgBackgroundHueShift.add(new DoubleSetting.Builder()
+        .name("range")
+        .description("How far the hue swings from the base color, in degrees each direction, instead of cycling continuously.")
+        .defaultValue(30)
+        .range(0, 180)
+        .sliderRange(0, 180)
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.HueShift)
+        .build()
+    );
+
+    // Fill Color (Rainbow) - fully independent of Ready Color (Rainbow) and Background Color
+    // (Rainbow) above, even when Fill Color Mode also picks Rainbow.
+
+    private final Setting<RainbowTransition> fillRainbowTransition = sgFillRainbow.add(new EnumSetting.Builder<RainbowTransition>()
+        .name("transition")
+        .description("Soft smoothly cycles through every hue. Hard jumps between a fixed set of hues with no blending.")
+        .defaultValue(RainbowTransition.Soft)
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.Rainbow)
+        .build()
+    );
+
+    private final Setting<Integer> fillRainbowSteps = sgFillRainbow.add(new IntSetting.Builder()
+        .name("hard-steps")
+        .description("How many distinct hues to jump between, in Hard mode.")
+        .defaultValue(6)
+        .min(2)
+        .sliderRange(2, 16)
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.Rainbow && fillRainbowTransition.get() == RainbowTransition.Hard)
+        .build()
+    );
+
+    private final Setting<Double> fillRainbowSpeed = sgFillRainbow.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the rainbow cycles.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.Rainbow)
+        .build()
+    );
+
+    // Fill Color (Gradient / Flashing)
+
+    private final Setting<List<SettingColor>> fillGradientColors = sgFillGradient.add(new ColorListSetting.Builder()
+        .name("colors")
+        .description("The colors to cycle between. Needs at least 2.")
+        .defaultValue(List.of(new SettingColor(40, 131, 155), new SettingColor(40, 200, 255)))
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<Double> fillGradientSpeed = sgFillGradient.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the gradient cycles.")
+        .defaultValue(3)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<List<TimedColorEntry>> fillFlashColors = sgFillGradient.add(new TimedColorListSetting.Builder()
+        .name("flash-colors")
+        .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
+        .defaultValue(List.of(new TimedColorEntry(new SettingColor(40, 255, 40), 10), new TimedColorEntry(new SettingColor(40, 200, 255), 10)))
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.Flashing)
+        .build()
+    );
+
+    // Fill Color (Hue Shift)
+
+    private final Setting<SettingColor> fillHueShiftBaseColor = sgFillHueShift.add(new ColorSetting.Builder()
+        .name("base-color")
+        .description("Starting color - its hue continuously rotates, keeping its saturation/brightness/alpha, unlike Rainbow which always uses full saturation/brightness regardless of the base color.")
+        .defaultValue(new SettingColor(40, 255, 40))
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> fillHueShiftSpeed = sgFillHueShift.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the hue rotates.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> fillHueShiftRange = sgFillHueShift.add(new DoubleSetting.Builder()
+        .name("range")
+        .description("How far the hue swings from the base color, in degrees each direction, instead of cycling continuously.")
+        .defaultValue(30)
+        .range(0, 180)
+        .sliderRange(0, 180)
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.HueShift)
+        .build()
+    );
+
+    // Smoothing
+
+    private final Setting<Boolean> smoothFill = sgSmoothing.add(new BoolSetting.Builder()
+        .name("smooth-fill")
+        .description("Interpolates the bar's fill amount (and any progress-driven color) smoothly toward its real value over time, instead of snapping instantly whenever the server syncs a new value - most servers only update this in discrete steps rather than every frame.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Double> smoothSpeed = sgSmoothing.add(new DoubleSetting.Builder()
+        .name("smooth-speed")
+        .description("How fast the displayed value catches up to the real one. Higher catches up faster/snappier, lower lags more/smoother.")
+        .defaultValue(15)
+        .min(0.1)
+        .sliderRange(1, 60)
+        .visible(smoothFill::get)
+        .build()
+    );
+
+    private float smoothedProgress = -1;
+    private long lastSmoothNanos = -1;
 
     public XPBarAdjust() {
         super(Categories.Render, "xp-bar-adjust", "Recolors the vanilla XP bar - useful on servers that repurpose it for an ability cooldown.");
@@ -308,6 +489,34 @@ public class XPBarAdjust extends Module {
     @Override
     public void onActivate() {
         invalidateGrayTextures();
+        smoothedProgress = -1;
+        lastSmoothNanos = -1;
+    }
+
+    /** The progress value to actually render this frame - the real value unchanged, or (with Smooth Fill on) an interpolated approach toward it. Advances the interpolation state, so call this at most once per frame. 0 = ready/empty, 1 = full/just applied - not yet run through Invert Progress. */
+    public float getRenderProgress(float target) {
+        if (!smoothFill.get()) {
+            smoothedProgress = target;
+            lastSmoothNanos = -1;
+            return target;
+        }
+
+        long now = System.nanoTime();
+        if (smoothedProgress < 0 || lastSmoothNanos < 0) {
+            smoothedProgress = target;
+        } else {
+            float dt = (now - lastSmoothNanos) / 1_000_000_000f;
+            float t = 1f - (float) Math.exp(-smoothSpeed.get() * dt);
+            smoothedProgress += (target - smoothedProgress) * t;
+        }
+        lastSmoothNanos = now;
+
+        return smoothedProgress;
+    }
+
+    /** Fill width in bar-local pixels (0..183), from an already-smoothed render progress (see getRenderProgress) - applies Invert Progress the same way the Cooldown color mode does, so width and color always agree. */
+    public int getFillWidthPixels(float renderProgress) {
+        return Math.round(applyInvert(renderProgress) * 183f);
     }
 
     // Keeps the Colorize textures in sync with whatever resource pack is actually active, the same
@@ -437,23 +646,30 @@ public class XPBarAdjust extends Module {
 
     /** Packed ARGB for the background/track overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getBackgroundOverlayArgb(float progress) {
-        return toOverlayArgb(resolveSurfaceColor(backgroundMode.get(), backgroundColor.get(), progress));
+        Color color = switch (backgroundMode.get()) {
+            case Fixed -> backgroundColor.get();
+            case Cooldown -> getColor(applyInvert(progress));
+            case Rainbow -> rainbowColor(backgroundRainbowTransition.get(), backgroundRainbowSteps.get(), backgroundRainbowSpeed.get());
+            case Gradient -> gradientColor(backgroundGradientColors.get(), backgroundGradientSpeed.get());
+            case Flashing -> flashColor(backgroundFlashColors.get(), backgroundColor.get());
+            case HueShift -> hueShiftColor(backgroundHueShiftBaseColor.get(), backgroundHueShiftSpeed.get(), backgroundHueShiftRange.get());
+        };
+
+        return toOverlayArgb(color);
     }
 
     /** Packed ARGB for the fill overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getFillOverlayArgb(float progress) {
-        return toOverlayArgb(resolveSurfaceColor(fillMode.get(), fillColor.get(), progress));
-    }
-
-    private Color resolveSurfaceColor(SurfaceColorMode mode, SettingColor fixedColor, float progress) {
-        return switch (mode) {
-            case Fixed -> fixedColor;
+        Color color = switch (fillMode.get()) {
+            case Fixed -> fillColor.get();
             case Cooldown -> getColor(applyInvert(progress));
-            case Rainbow -> getRainbowColor();
-            case Gradient -> getGradientColor();
-            case Flashing -> getFlashColor();
-            case HueShift -> getHueShiftColor();
+            case Rainbow -> rainbowColor(fillRainbowTransition.get(), fillRainbowSteps.get(), fillRainbowSpeed.get());
+            case Gradient -> gradientColor(fillGradientColors.get(), fillGradientSpeed.get());
+            case Flashing -> flashColor(fillFlashColors.get(), fillColor.get());
+            case HueShift -> hueShiftColor(fillHueShiftBaseColor.get(), fillHueShiftSpeed.get(), fillHueShiftRange.get());
         };
+
+        return toOverlayArgb(color);
     }
 
     private float applyInvert(float progress) {
@@ -483,19 +699,22 @@ public class XPBarAdjust extends Module {
     private Color getReadyColor() {
         return switch (readyColorMode.get()) {
             case Static -> readyStaticColor.get();
-            case Rainbow -> getRainbowColor();
-            case Gradient -> getGradientColor();
-            case Flashing -> getFlashColor();
-            case HueShift -> getHueShiftColor();
+            case Rainbow -> rainbowColor(rainbowTransition.get(), rainbowSteps.get(), rainbowSpeed.get());
+            case Gradient -> gradientColor(gradientColors.get(), gradientSpeed.get());
+            case Flashing -> flashColor(flashColors.get(), readyStaticColor.get());
+            case HueShift -> hueShiftColor(hueShiftBaseColor.get(), hueShiftSpeed.get(), hueShiftRange.get());
         };
     }
 
-    private Color getHueShiftColor() {
-        SettingColor base = hueShiftBaseColor.get();
+    // Shared math only - every caller (Ready Color, Background Color, Fill Color) brings its own,
+    // fully independent settings values, so e.g. picking Rainbow for both Background and Fill does
+    // NOT make them animate together unless their speeds/steps happen to match.
+
+    private Color hueShiftColor(SettingColor base, double speed, double range) {
         float[] hsb = java.awt.Color.RGBtoHSB(base.r, base.g, base.b, null);
 
-        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get();
-        double offset = Math.sin(time) * hueShiftRange.get();
+        double time = System.currentTimeMillis() / 1000.0 * speed;
+        double offset = Math.sin(time) * range;
         float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
 
         Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
@@ -503,9 +722,8 @@ public class XPBarAdjust extends Module {
         return color;
     }
 
-    private Color getFlashColor() {
-        List<TimedColorEntry> entries = flashColors.get();
-        if (entries.isEmpty()) return readyStaticColor.get();
+    private Color flashColor(List<TimedColorEntry> entries, Color fallback) {
+        if (entries.isEmpty()) return fallback;
         if (entries.size() == 1) return entries.get(0).color;
 
         long totalTicks = 0;
@@ -532,14 +750,13 @@ public class XPBarAdjust extends Module {
         );
     }
 
-    private Color getRainbowColor() {
-        double time = System.currentTimeMillis() / 1000.0 * rainbowSpeed.get() * 60.0;
+    private Color rainbowColor(RainbowTransition transition, int steps, double speed) {
+        double time = System.currentTimeMillis() / 1000.0 * speed * 60.0;
 
         float hue;
-        if (rainbowTransition.get() == RainbowTransition.Soft) {
+        if (transition == RainbowTransition.Soft) {
             hue = (float) (time % 360.0);
         } else {
-            int steps = rainbowSteps.get();
             int step = (int) (time / (360.0 / steps)) % steps;
             hue = step * (360f / steps);
         }
@@ -547,12 +764,11 @@ public class XPBarAdjust extends Module {
         return Color.fromHsv(hue, 1, 1);
     }
 
-    private Color getGradientColor() {
-        List<SettingColor> colors = gradientColors.get();
+    private Color gradientColor(List<SettingColor> colors, double speed) {
         if (colors.isEmpty()) return Color.WHITE;
         if (colors.size() == 1) return colors.get(0);
 
-        double time = (System.currentTimeMillis() / 1000.0 * gradientSpeed.get()) % colors.size();
+        double time = (System.currentTimeMillis() / 1000.0 * speed) % colors.size();
         int index = (int) time;
         float progress = (float) (time - index);
 

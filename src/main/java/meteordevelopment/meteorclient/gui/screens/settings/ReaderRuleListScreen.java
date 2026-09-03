@@ -65,6 +65,7 @@ public class ReaderRuleListScreen extends WindowScreen {
             };
 
             list.add(theme.minus()).right().widget().action = () -> {
+                rule.releaseCustomSoundSlot();
                 setting.get().remove(rule);
                 setting.onChanged();
 

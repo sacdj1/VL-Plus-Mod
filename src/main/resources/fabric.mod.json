@@ -8,10 +8,10 @@
     "sacdj"
   ],
   "contact": {
-    "homepage": "https://meteorclient.com",
-    "issues": "https://github.com/MeteorDevelopment/meteor-client/issues",
-    "sources": "https://github.com/MeteorDevelopment/meteor-client",
-    "discord": "https://meteorclient.com/discord"
+    "homepage": "https://github.com/sacdj1/VL-Plus-Mod",
+    "issues": "https://github.com/sacdj1/VL-Plus-Mod/issues",
+    "sources": "https://github.com/sacdj1/VL-Plus-Mod",
+    "discord": "https://discord.gg/FNUFVxjcRS"
   },
   "license": "GPL-3.0",
   "icon": "assets/meteor-client/icon.png",
@@ -35,7 +35,7 @@
     "meteor-client:commit": "${commit}",
     "modmenu": {
       "links": {
-        "modmenu.discord": "https://meteorclient.com/discord"
+        "modmenu.discord": "https://discord.gg/FNUFVxjcRS"
       }
     }
   },

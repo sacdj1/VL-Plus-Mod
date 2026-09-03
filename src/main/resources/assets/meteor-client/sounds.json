@@ -3,5 +3,165 @@
     "sounds": [
       "meteor-client:alerts_custom"
     ]
+  },
+  "alerts_rule_0": {
+    "sounds": [
+      "meteor-client:alerts_rule_0"
+    ]
+  },
+  "alerts_rule_1": {
+    "sounds": [
+      "meteor-client:alerts_rule_1"
+    ]
+  },
+  "alerts_rule_2": {
+    "sounds": [
+      "meteor-client:alerts_rule_2"
+    ]
+  },
+  "alerts_rule_3": {
+    "sounds": [
+      "meteor-client:alerts_rule_3"
+    ]
+  },
+  "alerts_rule_4": {
+    "sounds": [
+      "meteor-client:alerts_rule_4"
+    ]
+  },
+  "alerts_rule_5": {
+    "sounds": [
+      "meteor-client:alerts_rule_5"
+    ]
+  },
+  "alerts_rule_6": {
+    "sounds": [
+      "meteor-client:alerts_rule_6"
+    ]
+  },
+  "alerts_rule_7": {
+    "sounds": [
+      "meteor-client:alerts_rule_7"
+    ]
+  },
+  "alerts_rule_8": {
+    "sounds": [
+      "meteor-client:alerts_rule_8"
+    ]
+  },
+  "alerts_rule_9": {
+    "sounds": [
+      "meteor-client:alerts_rule_9"
+    ]
+  },
+  "alerts_rule_10": {
+    "sounds": [
+      "meteor-client:alerts_rule_10"
+    ]
+  },
+  "alerts_rule_11": {
+    "sounds": [
+      "meteor-client:alerts_rule_11"
+    ]
+  },
+  "alerts_rule_12": {
+    "sounds": [
+      "meteor-client:alerts_rule_12"
+    ]
+  },
+  "alerts_rule_13": {
+    "sounds": [
+      "meteor-client:alerts_rule_13"
+    ]
+  },
+  "alerts_rule_14": {
+    "sounds": [
+      "meteor-client:alerts_rule_14"
+    ]
+  },
+  "alerts_rule_15": {
+    "sounds": [
+      "meteor-client:alerts_rule_15"
+    ]
+  },
+  "alerts_rule_16": {
+    "sounds": [
+      "meteor-client:alerts_rule_16"
+    ]
+  },
+  "alerts_rule_17": {
+    "sounds": [
+      "meteor-client:alerts_rule_17"
+    ]
+  },
+  "alerts_rule_18": {
+    "sounds": [
+      "meteor-client:alerts_rule_18"
+    ]
+  },
+  "alerts_rule_19": {
+    "sounds": [
+      "meteor-client:alerts_rule_19"
+    ]
+  },
+  "alerts_rule_20": {
+    "sounds": [
+      "meteor-client:alerts_rule_20"
+    ]
+  },
+  "alerts_rule_21": {
+    "sounds": [
+      "meteor-client:alerts_rule_21"
+    ]
+  },
+  "alerts_rule_22": {
+    "sounds": [
+      "meteor-client:alerts_rule_22"
+    ]
+  },
+  "alerts_rule_23": {
+    "sounds": [
+      "meteor-client:alerts_rule_23"
+    ]
+  },
+  "alerts_rule_24": {
+    "sounds": [
+      "meteor-client:alerts_rule_24"
+    ]
+  },
+  "alerts_rule_25": {
+    "sounds": [
+      "meteor-client:alerts_rule_25"
+    ]
+  },
+  "alerts_rule_26": {
+    "sounds": [
+      "meteor-client:alerts_rule_26"
+    ]
+  },
+  "alerts_rule_27": {
+    "sounds": [
+      "meteor-client:alerts_rule_27"
+    ]
+  },
+  "alerts_rule_28": {
+    "sounds": [
+      "meteor-client:alerts_rule_28"
+    ]
+  },
+  "alerts_rule_29": {
+    "sounds": [
+      "meteor-client:alerts_rule_29"
+    ]
+  },
+  "alerts_rule_30": {
+    "sounds": [
+      "meteor-client:alerts_rule_30"
+    ]
+  },
+  "alerts_rule_31": {
+    "sounds": [
+      "meteor-client:alerts_rule_31"
+    ]
   }
 }

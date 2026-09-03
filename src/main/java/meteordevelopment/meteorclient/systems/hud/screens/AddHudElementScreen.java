@@ -20,6 +20,7 @@ import meteordevelopment.meteorclient.utils.Utils;
 import net.minecraft.client.gui.DrawContext;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +71,13 @@ public class AddHudElementScreen extends WindowScreen {
                 }
             }
             else if (Utils.searchTextDefault(info.title, searchBar.get(), false)) grouped.computeIfAbsent(info.group, hudGroup -> new ArrayList<>()).add(new Item(info.title, info.description, info));
+        }
+
+        // Elements opening a preset picker (the " > " button, e.g. Text) get their own extra
+        // screen instead of adding directly - pinned last within their group so they don't sit
+        // wherever they happen to land alphabetically among the plain add-directly elements.
+        for (List<Item> items : grouped.values()) {
+            items.sort(Comparator.comparing(item -> item.object instanceof HudElementInfo<?> info && info.hasPresets()));
         }
 
         // Create widgets

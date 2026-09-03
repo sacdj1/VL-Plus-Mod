@@ -16,12 +16,25 @@ import meteordevelopment.meteorclient.systems.modules.misc.BetterChat;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.render.XPBarAdjust;
+import meteordevelopment.meteorclient.systems.modules.render.XPLevelAdjust;
+import meteordevelopment.meteorclient.systems.hud.Hud;
+import meteordevelopment.meteorclient.systems.hud.HudElement;
+import meteordevelopment.meteorclient.systems.hud.elements.VanillaAirHud;
+import meteordevelopment.meteorclient.systems.hud.elements.VanillaArmorHud;
+import meteordevelopment.meteorclient.systems.hud.elements.VanillaHealthHud;
+import meteordevelopment.meteorclient.systems.hud.elements.VanillaHotbarHud;
+import meteordevelopment.meteorclient.systems.hud.elements.VanillaHungerHud;
+import meteordevelopment.meteorclient.systems.hud.elements.VanillaMountHealthHud;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.render.CustomFontRenderer;
+import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.hud.InGameHud;
 import net.minecraft.client.render.RenderTickCounter;
+import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
@@ -43,6 +56,8 @@ public abstract class InGameHudMixin {
     @Shadow private Text subtitle;
 
     @Shadow public abstract void clear();
+
+    @Shadow protected abstract boolean shouldRenderExperience();
 
     @Inject(method = "render", at = @At("TAIL"))
     private void onRender(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
@@ -159,28 +174,217 @@ public abstract class InGameHudMixin {
         XPBarAdjust module = Modules.get().get(XPBarAdjust.class);
         if (!module.isActive() || !module.shouldRecolorBackground()) return;
 
-        int argb = module.getBackgroundOverlayArgb(client.player.experienceProgress);
+        float renderProgress = module.getRenderProgress(client.player.experienceProgress);
+        int argb = module.getBackgroundOverlayArgb(renderProgress);
         if (argb == 0) return;
 
         int y = context.getScaledWindowHeight() - 32 + 3;
         drawXpBarOverlay(context, module, argb, x, y, 182, 182, 5, module.getBackgroundGrayTexture(), module.getBackgroundGrayTextureWidth(), module.getBackgroundGrayTextureHeight());
     }
 
-    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIIIIIII)V", shift = At.Shift.AFTER))
+    // Drawn independently at TAIL rather than hooked onto vanilla's own progress-texture draw call:
+    // vanilla only makes that call at all when its own (real, unsmoothed, un-inverted) width is
+    // greater than zero, which is most of the time while the bar sits at "ready" on a
+    // cooldown-repurposed server - hooking that call would mean Smooth Fill/Invert Progress could
+    // never keep drawing a receding/growing fill during exactly that window. Both render styles
+    // already draw themselves fully (Colorize redraws the whole cropped texture, Solid draws a
+    // flat rect), so nothing here actually depends on vanilla's own draw having happened.
+    @Inject(method = "renderExperienceBar", at = @At("TAIL"))
     private void onRenderExperienceBarProgress(DrawContext context, int x, CallbackInfo ci) {
         if (client.player == null || Modules.get() == null) return;
+        if (client.player.getNextLevelExperience() <= 0) return;
 
         XPBarAdjust module = Modules.get().get(XPBarAdjust.class);
         if (!module.isActive() || !module.shouldRecolorFill()) return;
 
-        int argb = module.getFillOverlayArgb(client.player.experienceProgress);
+        float renderProgress = module.getRenderProgress(client.player.experienceProgress);
+        int argb = module.getFillOverlayArgb(renderProgress);
         if (argb == 0) return;
 
-        int width = (int) (client.player.experienceProgress * 183f);
+        int width = module.getFillWidthPixels(renderProgress);
         if (width <= 0) return;
 
         int y = context.getScaledWindowHeight() - 32 + 3;
+
+        RenderSystem.enableBlend();
         drawXpBarOverlay(context, module, argb, x, y, width, 183, 5, module.getProgressGrayTexture(), module.getProgressGrayTextureWidth(), module.getProgressGrayTextureHeight());
+        RenderSystem.disableBlend();
+    }
+
+    // XPLevelAdjust module: fully replaces vanilla's own draw (cancelled below) rather than
+    // overlaying on top of it, since vanilla skips drawing entirely once the level is 0 - a plain
+    // overlay could never implement On Zero's Hide/Custom Text/Distinct Color options, which all
+    // need to run even when vanilla itself would show nothing.
+    @Inject(method = "renderExperienceLevel", at = @At("HEAD"), cancellable = true)
+    private void onRenderExperienceLevel(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        if (client.player == null || Modules.get() == null) return;
+
+        XPLevelAdjust module = Modules.get().get(XPLevelAdjust.class);
+        if (!module.isActive() || !shouldRenderExperience()) return;
+
+        ci.cancel();
+
+        int level = client.player.experienceLevel;
+        if (module.isHidden(level)) return;
+
+        String text = module.getText(level);
+        Color color = module.getColor(level);
+        int argb = color.getPacked();
+
+        double scale = module.getScale();
+        int centerX = context.getScaledWindowWidth() / 2;
+        int y = context.getScaledWindowHeight() - 31 - 4;
+
+        MatrixStack matrices = context.getMatrices();
+        matrices.push();
+        matrices.scale((float) scale, (float) scale, 1f);
+
+        if (module.useCustomFont()) {
+            double width = CustomFontRenderer.width(module.getFont(), text, 1.0, module.getShadow());
+            double drawX = centerX / scale - width / 2.0;
+            double drawY = y / scale;
+
+            CustomFontRenderer.render(module.getFont(), text, drawX, drawY, color, 1.0, module.getShadow());
+        }
+        else {
+            int width = client.textRenderer.getWidth(text);
+            int drawX = (int) Math.round(centerX / scale - width / 2.0);
+            int drawY = (int) Math.round(y / scale);
+
+            context.drawText(client.textRenderer, text, drawX, drawY, argb, module.getShadow());
+        }
+
+        matrices.pop();
+    }
+
+    // Vanilla HUD relocator elements (VanillaHotbarHud etc.): none of them draw anything
+    // themselves - vanilla's own draw call for that piece just runs completely unmodified inside
+    // a translated/scaled matrix instead, so every bit of vanilla's own logic (item rendering,
+    // heart selection, blinking/regen animation, absorption, hardcore hearts...) stays exactly
+    // correct for free. The transform maps vanilla's own default anchor point for that piece onto
+    // the element's real HUD position, at the element's own scale - when no such element is
+    // present, defaultX/defaultY and scale 1 make this an identity transform (a harmless no-op).
+    private <T extends HudElement> T findVanillaElement(Class<T> type) {
+        for (HudElement element : Hud.get()) {
+            if (type.isInstance(element) && element.isActive()) return type.cast(element);
+        }
+
+        return null;
+    }
+
+    private void pushVanillaTransform(DrawContext context, double elementX, double elementY, double scale, double defaultX, double defaultY) {
+        MatrixStack matrices = context.getMatrices();
+        matrices.push();
+        matrices.translate(elementX, elementY, 0);
+        matrices.scale((float) scale, (float) scale, 1f);
+        matrices.translate(-defaultX, -defaultY, 0);
+    }
+
+    private void popVanillaTransform(DrawContext context) {
+        context.getMatrices().pop();
+    }
+
+    @Inject(method = "renderHotbar", at = @At("HEAD"))
+    private void onRenderHotbarHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
+        double defaultX = context.getScaledWindowWidth() / 2.0 - 91;
+        double defaultY = context.getScaledWindowHeight() - 22;
+
+        pushVanillaTransform(context, element != null ? element.x : defaultX, element != null ? element.y : defaultY, element != null ? element.getScale() : 1, defaultX, defaultY);
+    }
+
+    @Inject(method = "renderHotbar", at = @At("TAIL"))
+    private void onRenderHotbarTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        popVanillaTransform(context);
+    }
+
+    @Inject(method = "renderArmor", at = @At("HEAD"))
+    private static void onRenderArmorHead(DrawContext context, PlayerEntity player, int i, int j, int k, int x, CallbackInfo ci) {
+        VanillaArmorHud element = staticFindVanillaElement(VanillaArmorHud.class);
+
+        double defaultX = x;
+        double defaultY = i - (j - 1) * k - 10;
+
+        MatrixStack matrices = context.getMatrices();
+        matrices.push();
+        matrices.translate(element != null ? element.x : defaultX, element != null ? element.y : defaultY, 0);
+        matrices.scale((float) (element != null ? element.getScale() : 1), (float) (element != null ? element.getScale() : 1), 1f);
+        matrices.translate(-defaultX, -defaultY, 0);
+    }
+
+    @Inject(method = "renderArmor", at = @At("TAIL"))
+    private static void onRenderArmorTail(DrawContext context, PlayerEntity player, int i, int j, int k, int x, CallbackInfo ci) {
+        context.getMatrices().pop();
+    }
+
+    private static <T extends HudElement> T staticFindVanillaElement(Class<T> type) {
+        for (HudElement element : Hud.get()) {
+            if (type.isInstance(element) && element.isActive()) return type.cast(element);
+        }
+
+        return null;
+    }
+
+    @Inject(method = "renderHealthBar", at = @At("HEAD"))
+    private void onRenderHealthBarHead(DrawContext context, PlayerEntity player, int x, int y, int lines, int regeneratingHeartIndex, float maxHealth, int lastHealth, int health, int absorption, boolean blinking, CallbackInfo ci) {
+        VanillaHealthHud element = findVanillaElement(VanillaHealthHud.class);
+        pushVanillaTransform(context, element != null ? element.x : x, element != null ? element.y : y, element != null ? element.getScale() : 1, x, y);
+    }
+
+    @Inject(method = "renderHealthBar", at = @At("TAIL"))
+    private void onRenderHealthBarTail(DrawContext context, PlayerEntity player, int x, int y, int lines, int regeneratingHeartIndex, float maxHealth, int lastHealth, int health, int absorption, boolean blinking, CallbackInfo ci) {
+        popVanillaTransform(context);
+    }
+
+    @Inject(method = "renderFood", at = @At("HEAD"))
+    private void onRenderFoodHead(DrawContext context, PlayerEntity player, int top, int right, CallbackInfo ci) {
+        VanillaHungerHud element = findVanillaElement(VanillaHungerHud.class);
+        double defaultX = right - 81;
+        double defaultY = top;
+
+        pushVanillaTransform(context, element != null ? element.x : defaultX, element != null ? element.y : defaultY, element != null ? element.getScale() : 1, defaultX, defaultY);
+    }
+
+    @Inject(method = "renderFood", at = @At("TAIL"))
+    private void onRenderFoodTail(DrawContext context, PlayerEntity player, int top, int right, CallbackInfo ci) {
+        popVanillaTransform(context);
+    }
+
+    @Inject(method = "renderMountHealth", at = @At("HEAD"))
+    private void onRenderMountHealthHead(DrawContext context, CallbackInfo ci) {
+        VanillaMountHealthHud element = findVanillaElement(VanillaMountHealthHud.class);
+        double defaultX = context.getScaledWindowWidth() / 2.0 + 91 - 81;
+        double defaultY = context.getScaledWindowHeight() - 39;
+
+        pushVanillaTransform(context, element != null ? element.x : defaultX, element != null ? element.y : defaultY, element != null ? element.getScale() : 1, defaultX, defaultY);
+    }
+
+    @Inject(method = "renderMountHealth", at = @At("TAIL"))
+    private void onRenderMountHealthTail(DrawContext context, CallbackInfo ci) {
+        popVanillaTransform(context);
+    }
+
+    // Air bubbles: vanilla draws these inline inside renderStatusBars with no separate callable
+    // method to redirect like the other pieces, so VanillaAirHud reimplements the visual itself
+    // (see that class) and this just hides vanilla's own copy - by translating it far off-screen
+    // rather than cancelling, since cancelling mid-method here would skip the profiler.pop() at
+    // the end of renderStatusBars and leave its profiler stack unbalanced. RenderSystem.enableBlend()/
+    // disableBlend() bracket exactly the air-drawing loop and are the only inline blend calls in
+    // this specific method (armor/health/food each have their own, inside their own methods), so
+    // they're a safe, unambiguous pair of injection points.
+    @Inject(method = "renderStatusBars", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;enableBlend()V", ordinal = 0, shift = At.Shift.BEFORE, remap = false))
+    private void onRenderAirHead(DrawContext context, CallbackInfo ci) {
+        if (findVanillaElement(VanillaAirHud.class) == null) return;
+
+        context.getMatrices().push();
+        context.getMatrices().translate(100000.0, 100000.0, 0);
+    }
+
+    @Inject(method = "renderStatusBars", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;disableBlend()V", ordinal = 0, shift = At.Shift.AFTER, remap = false))
+    private void onRenderAirTail(DrawContext context, CallbackInfo ci) {
+        if (findVanillaElement(VanillaAirHud.class) == null) return;
+
+        context.getMatrices().pop();
     }
 
     // maxWidth is the logical full-bar width this specific draw call scales against (182 for the

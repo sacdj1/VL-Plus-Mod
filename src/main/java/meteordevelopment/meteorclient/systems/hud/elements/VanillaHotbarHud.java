@@ -1,0 +1,55 @@
+/*
+ * This file is part of the Meteor Client distribution (https://github.com/MeteorDevelopment/meteor-client).
+ * Copyright (c) Meteor Development.
+ */
+
+package meteordevelopment.meteorclient.systems.hud.elements;
+
+import meteordevelopment.meteorclient.settings.DoubleSetting;
+import meteordevelopment.meteorclient.settings.Setting;
+import meteordevelopment.meteorclient.settings.SettingGroup;
+import meteordevelopment.meteorclient.systems.hud.Hud;
+import meteordevelopment.meteorclient.systems.hud.HudElement;
+import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
+import meteordevelopment.meteorclient.systems.hud.HudRenderer;
+import meteordevelopment.meteorclient.utils.render.color.Color;
+
+/**
+ * Doesn't draw anything itself - just a draggable/scalable anchor. InGameHudMixin redirects
+ * vanilla's own hotbar draw (background, selection, offhand, items, attack indicator - all of it,
+ * pixel-perfect since it's still vanilla's own code running) to this element's position/scale
+ * whenever it's present in the HUD, instead of reimplementing that rendering from scratch.
+ */
+public class VanillaHotbarHud extends HudElement {
+    public static final HudElementInfo<VanillaHotbarHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-hotbar", "Moves and scales the real hotbar (items, selection, offhand slot, attack indicator) - reported not working correctly, under investigation.", VanillaHotbarHud::new);
+
+    private final SettingGroup sgGeneral = settings.getDefaultGroup();
+
+    private final Setting<Double> scale = sgGeneral.add(new DoubleSetting.Builder()
+        .name("scale")
+        .description("Size multiplier over vanilla's normal size.")
+        .defaultValue(1.0)
+        .min(0.1)
+        .sliderRange(0.1, 5)
+        .onChanged(v -> calculateSize())
+        .build()
+    );
+
+    public VanillaHotbarHud() {
+        super(INFO);
+        calculateSize();
+    }
+
+    private void calculateSize() {
+        setSize(182 * scale.get(), 22 * scale.get());
+    }
+
+    public double getScale() {
+        return scale.get();
+    }
+
+    @Override
+    public void render(HudRenderer renderer) {
+        if (isInEditor()) renderer.quad(x, y, getWidth(), getHeight(), new Color(255, 255, 255, 40));
+    }
+}

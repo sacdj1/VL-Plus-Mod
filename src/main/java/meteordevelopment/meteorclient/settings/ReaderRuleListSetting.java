@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.settings;
 
+import meteordevelopment.meteorclient.utils.misc.VLSounds;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import net.minecraft.nbt.NbtList;
@@ -48,7 +49,13 @@ public class ReaderRuleListSetting extends Setting<List<ReaderRule>> {
         get().clear();
 
         for (NbtElement e : tag.getList("value", NbtElement.COMPOUND_TYPE)) {
-            get().add(ReaderRule.fromTag((NbtCompound) e));
+            ReaderRule rule = ReaderRule.fromTag((NbtCompound) e);
+            get().add(rule);
+
+            // Slots are only tracked in-memory (VLSounds.RULE_SOUND_SLOT_USED resets every
+            // launch), but a rule's own slot number is persisted - re-reserve it here so a
+            // different rule's later ensureCustomSoundSlot() call can't be handed the same slot.
+            if (rule.customSoundSlot >= 0) VLSounds.reserveRuleSoundSlot(rule.customSoundSlot);
         }
 
         return get();

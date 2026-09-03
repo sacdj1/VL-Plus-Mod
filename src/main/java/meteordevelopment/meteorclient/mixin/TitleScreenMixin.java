@@ -22,6 +22,7 @@ import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.network.ServerAddress;
 import net.minecraft.client.network.ServerInfo;
+import net.minecraft.client.option.ServerList;
 import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import org.lwjgl.glfw.GLFW;
@@ -59,9 +60,37 @@ public abstract class TitleScreenMixin extends Screen {
 
         int y = this.height / 4 + 48 + 72 + 12 + 24;
 
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("Join VL+"), button -> {
-            ServerInfo server = new ServerInfo("Ventureland", "mc.ventureland.net", ServerInfo.ServerType.OTHER);
-            ConnectScreen.connect(this, this.client, ServerAddress.parse(server.address), server, false, null);
-        }).dimensions(this.width / 2 - 100, y, 200, 20).build());
+        this.addDrawableChild(ButtonWidget.builder(Text.literal("Join Ventureland"), button -> connectToVentureland())
+            .dimensions(this.width / 2 - 100, y, 200, 20).build());
+    }
+
+    // Only meant to fire once, right after the game finishes starting up - static so it survives
+    // across every TitleScreen instance, since returning to the title screen later (e.g. after
+    // disconnecting from a server) re-runs init() and shouldn't trigger this again.
+    private static boolean autoJoinAttempted = false;
+
+    @Inject(method = "init", at = @At("TAIL"))
+    private void onInitAutoJoin(CallbackInfo ci) {
+        if (autoJoinAttempted) return;
+        autoJoinAttempted = true;
+
+        Config config = Config.get();
+        if (config == null || !config.autoJoinVentureland.get()) return;
+
+        connectToVentureland();
+    }
+
+    // Connects using whatever the "mc.ventureland.net" entry is actually configured as in the
+    // Multiplayer server list (name, resource pack policy, etc.) instead of a fixed,
+    // unconfigurable stand-in - ServerListMixin guarantees an entry with this address always
+    // exists there.
+    private void connectToVentureland() {
+        ServerList serverList = new ServerList(this.client);
+        serverList.loadFile();
+
+        ServerInfo server = serverList.get("mc.ventureland.net");
+        if (server == null) server = new ServerInfo("Ventureland", "mc.ventureland.net", ServerInfo.ServerType.OTHER);
+
+        ConnectScreen.connect(this, this.client, ServerAddress.parse(server.address), server, false, null);
     }
 }

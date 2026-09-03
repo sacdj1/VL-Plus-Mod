@@ -220,8 +220,16 @@ public class ActiveModulesHud extends HudElement {
 
         prevX = x;
 
+        // Computed live rather than reusing the tick()-cached getWidth() - module titles (and so
+        // their widths) can change instantly, e.g. toggling Show Origin Symbols, but tick() only
+        // runs at 20Hz. Aligning per-module offsets against a stale container width while drawing
+        // the text/outline at the new (already up to date) width is what visibly desyncs the two
+        // for up to a tick after any such change.
+        double liveWidth = 0;
+        for (Module module : modules) liveWidth = Math.max(liveWidth, getModuleWidth(renderer, module));
+
         for (int i = 0; i < modules.size(); i++) {
-            double offset = alignX(getModuleWidth(renderer, modules.get(i)), alignment.get());
+            double offset = box.alignX(liveWidth, getModuleWidth(renderer, modules.get(i)), alignment.get());
             renderModule(renderer, modules, i, x + offset, y);
 
             prevX = x + offset;

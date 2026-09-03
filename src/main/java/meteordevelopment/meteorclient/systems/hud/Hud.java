@@ -29,6 +29,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class Hud extends System<Hud> implements Iterable<HudElement> {
     public static final HudGroup GROUP = new HudGroup("VL+");
+    public static final HudGroup VANILLA_GROUP = new HudGroup("Vanilla");
 
     public boolean active = true;
     public Settings settings = new Settings();
@@ -132,6 +133,12 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(AbilityCooldownHud.INFO);
         register(XPLevelHud.INFO);
         register(ReaderNotifHud.INFO);
+        register(VanillaHotbarHud.INFO);
+        register(VanillaArmorHud.INFO);
+        register(VanillaHealthHud.INFO);
+        register(VanillaHungerHud.INFO);
+        register(VanillaMountHealthHud.INFO);
+        register(VanillaAirHud.INFO);
 
         // Default config
         if (isFirstInit) resetToDefaultElements();

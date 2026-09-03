@@ -77,6 +77,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         factories.put(TimedColorListSetting.class, (table, setting) -> timedColorListW(table, (TimedColorListSetting) setting));
         factories.put(FontFaceSetting.class, (table, setting) -> fontW(table, (FontFaceSetting) setting));
         factories.put(Vector3dSetting.class, (table, setting) -> vector3dW(table, (Vector3dSetting) setting));
+        factories.put(ReaderRuleListSetting.class, (table, setting) -> readerRuleListW(table, (ReaderRuleListSetting) setting));
     }
 
     @Override
@@ -569,6 +570,10 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         table.row();
 
         return component;
+    }
+
+    private void readerRuleListW(WTable table, ReaderRuleListSetting setting) {
+        selectW(table, setting, () -> mc.setScreen(new ReaderRuleListScreen(theme, setting)));
     }
 
     // Other
