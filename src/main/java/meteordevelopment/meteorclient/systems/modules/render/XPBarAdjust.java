@@ -24,17 +24,25 @@ import java.util.List;
 /**
  * Recolors the vanilla XP bar itself - useful on servers that repurpose it to show an ability
  * cooldown instead of real XP. Follows the same convention as the Ability Cooldown HUD element:
- * experienceProgress 0 = empty/ready, 1 = full/cooldown just applied.
+ * experienceProgress 0 = empty/ready, 1 = full/cooldown just applied (flip with Invert Progress if
+ * a given server runs the opposite way).
  *
- * The background/track is the always-full-width part of the bar - it never changes size, so it's
- * given a fixed color rather than one driven by progress. The fill/progress part is the piece that
- * actually grows and shrinks with the cooldown, so that's where the ready/not-ready color logic
- * (below) applies - it's the part that visually communicates the cooldown state.
+ * The background/track is the always-full-width part of the bar - it never changes size. The
+ * fill/progress part is the piece that actually grows and shrinks with the cooldown. Either, both,
+ * or neither can show the ready/not-ready/mid color (Cooldown Color Target) - which one is the
+ * visually meaningful part of the bar turns out to vary by server/resource pack, so this isn't
+ * hardcoded to one of them.
  */
 public class XPBarAdjust extends Module {
     public enum RenderStyle {
         Colorize,
         Solid
+    }
+
+    public enum DynamicColorTarget {
+        Fill,
+        Background,
+        Both
     }
 
     public enum ReadyColorMode {
@@ -67,23 +75,23 @@ public class XPBarAdjust extends Module {
 
     private final Setting<Boolean> recolorBackground = sgGeneral.add(new BoolSetting.Builder()
         .name("recolor-background")
-        .description("Recolors the empty/background part of the bar (the always-full-width track behind the fill) using Background Color below - it stays fixed, it doesn't change with progress like the fill does.")
+        .description("Recolors the empty/background part of the bar (the always-full-width track behind the fill) - see Cooldown Color Target below for whether it shows a fixed color or reacts to cooldown state.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<DynamicColorTarget> dynamicColorTarget = sgGeneral.add(new EnumSetting.Builder<DynamicColorTarget>()
+        .name("cooldown-color-target")
+        .description("Which surface(s) actually change color to show cooldown state (the ready/not-ready/mid gradient below). Whichever one(s) aren't picked here just shows Background Color, fixed, regardless of cooldown. Which surface is the visually dominant, meaningful part of the bar varies by server/resource pack - there's no way to know which without you telling me.")
+        .defaultValue(DynamicColorTarget.Fill)
         .build()
     );
 
     private final Setting<SettingColor> backgroundColor = sgGeneral.add(new ColorSetting.Builder()
         .name("background-color")
-        .description("Fixed tint for whichever surface has the fixed-color role - normally the background/track, or the fill if Swap Background/Fill Roles is on. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
+        .description("Fixed tint for whichever surface(s) Cooldown Color Target above doesn't cover. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
         .defaultValue(new SettingColor(255, 40, 40, 120))
-        .visible(recolorBackground::get)
-        .build()
-    );
-
-    private final Setting<Boolean> swapBackgroundFillRoles = sgGeneral.add(new BoolSetting.Builder()
-        .name("swap-background-fill-roles")
-        .description("Swaps which surface gets the fixed color (Background Color) and which gets the ready/not-ready/mid gradient below. Some servers/resource packs make the always-full-width background the visually dominant part of the bar instead of the fill (or the other way around), so which one should actually react to cooldown state varies per server - there's no way to know which without you telling me.")
-        .defaultValue(false)
+        .visible(() -> recolorBackground.get() && dynamicColorTarget.get() != DynamicColorTarget.Both)
         .build()
     );
 
@@ -373,12 +381,14 @@ public class XPBarAdjust extends Module {
 
     /** Packed ARGB for the background/track overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getBackgroundOverlayArgb(float progress) {
-        return toOverlayArgb(swapBackgroundFillRoles.get() ? getColor(applyInvert(progress)) : backgroundColor.get());
+        boolean dynamic = dynamicColorTarget.get() == DynamicColorTarget.Background || dynamicColorTarget.get() == DynamicColorTarget.Both;
+        return toOverlayArgb(dynamic ? getColor(applyInvert(progress)) : backgroundColor.get());
     }
 
     /** Packed ARGB for the fill overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getFillOverlayArgb(float progress) {
-        return toOverlayArgb(swapBackgroundFillRoles.get() ? backgroundColor.get() : getColor(applyInvert(progress)));
+        boolean dynamic = dynamicColorTarget.get() == DynamicColorTarget.Fill || dynamicColorTarget.get() == DynamicColorTarget.Both;
+        return toOverlayArgb(dynamic ? getColor(applyInvert(progress)) : backgroundColor.get());
     }
 
     private float applyInvert(float progress) {
