@@ -28,10 +28,11 @@ import java.util.List;
  * a given server runs the opposite way).
  *
  * The background/track is the always-full-width part of the bar - it never changes size. The
- * fill/progress part is the piece that actually grows and shrinks with the cooldown. Either, both,
- * or neither can show the ready/not-ready/mid color (Cooldown Color Target) - which one is the
- * visually meaningful part of the bar turns out to vary by server/resource pack, so this isn't
- * hardcoded to one of them.
+ * fill/progress part is the piece that actually grows and shrinks with the cooldown. Each surface
+ * independently picks its own color mode (Background/Fill Color Mode) - a fixed color, the
+ * ready/not-ready/mid/end cooldown gradient, or its own animated color unrelated to cooldown at
+ * all. Which surface is the visually meaningful part of the bar turns out to vary by server/
+ * resource pack, so this isn't hardcoded to one of them.
  */
 public class XPBarAdjust extends Module {
     public enum RenderStyle {
@@ -39,10 +40,13 @@ public class XPBarAdjust extends Module {
         Solid
     }
 
-    public enum DynamicColorTarget {
-        Fill,
-        Background,
-        Both
+    public enum SurfaceColorMode {
+        Fixed,
+        Cooldown,
+        Rainbow,
+        Gradient,
+        Flashing,
+        HueShift
     }
 
     public enum ReadyColorMode {
@@ -75,30 +79,47 @@ public class XPBarAdjust extends Module {
 
     private final Setting<Boolean> recolorBackground = sgGeneral.add(new BoolSetting.Builder()
         .name("recolor-background")
-        .description("Recolors the empty/background part of the bar (the always-full-width track behind the fill) - see Cooldown Color Target below for whether it shows a fixed color or reacts to cooldown state.")
+        .description("Recolors the empty/background part of the bar (the always-full-width track behind the fill) - see Background Color Mode below for how.")
         .defaultValue(true)
         .build()
     );
 
-    private final Setting<DynamicColorTarget> dynamicColorTarget = sgGeneral.add(new EnumSetting.Builder<DynamicColorTarget>()
-        .name("cooldown-color-target")
-        .description("Which surface(s) actually change color to show cooldown state (the ready/not-ready/mid gradient below). Whichever one(s) aren't picked here just shows Background Color, fixed, regardless of cooldown. Which surface is the visually dominant, meaningful part of the bar varies by server/resource pack - there's no way to know which without you telling me.")
-        .defaultValue(DynamicColorTarget.Background)
+    private final Setting<SurfaceColorMode> backgroundMode = sgGeneral.add(new EnumSetting.Builder<SurfaceColorMode>()
+        .name("background-color-mode")
+        .description("How the background/track picks its color. Fixed: Background Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown - same idea as Ready Color Mode below, just applied here directly instead of only as that gradient's ready endpoint (and sharing those same Rainbow/Gradient/Flashing/HueShift settings, so picking the same mode for both surfaces shows them animating together).")
+        .defaultValue(SurfaceColorMode.Cooldown)
+        .visible(recolorBackground::get)
         .build()
     );
 
     private final Setting<SettingColor> backgroundColor = sgGeneral.add(new ColorSetting.Builder()
         .name("background-color")
-        .description("Fixed tint for whichever surface(s) Cooldown Color Target above doesn't cover. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
+        .description("Fixed color for the background/track, when Background Color Mode above is Fixed. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
         .defaultValue(new SettingColor(42, 17, 0, 255))
-        .visible(() -> recolorBackground.get() && dynamicColorTarget.get() != DynamicColorTarget.Both)
+        .visible(() -> recolorBackground.get() && backgroundMode.get() == SurfaceColorMode.Fixed)
         .build()
     );
 
     private final Setting<Boolean> recolorFill = sgGeneral.add(new BoolSetting.Builder()
         .name("recolor-fill")
-        .description("Recolors the filled/progress part of the bar - the part that actually grows/shrinks with the cooldown.")
+        .description("Recolors the filled/progress part of the bar (the part that actually grows/shrinks with the cooldown) - see Fill Color Mode below for how.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<SurfaceColorMode> fillMode = sgGeneral.add(new EnumSetting.Builder<SurfaceColorMode>()
+        .name("fill-color-mode")
+        .description("How the fill/progress part picks its color. Fixed: Fill Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown.")
+        .defaultValue(SurfaceColorMode.Fixed)
+        .visible(recolorFill::get)
+        .build()
+    );
+
+    private final Setting<SettingColor> fillColor = sgGeneral.add(new ColorSetting.Builder()
+        .name("fill-color")
+        .description("Fixed color for the fill/progress part, when Fill Color Mode above is Fixed. Its alpha controls how strongly it blends with the bar's normal look - separate from Overall Alpha below, which fades the whole recolor.")
+        .defaultValue(new SettingColor(42, 17, 0, 255))
+        .visible(() -> recolorFill.get() && fillMode.get() == SurfaceColorMode.Fixed)
         .build()
     );
 
@@ -389,14 +410,23 @@ public class XPBarAdjust extends Module {
 
     /** Packed ARGB for the background/track overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getBackgroundOverlayArgb(float progress) {
-        boolean dynamic = dynamicColorTarget.get() == DynamicColorTarget.Background || dynamicColorTarget.get() == DynamicColorTarget.Both;
-        return toOverlayArgb(dynamic ? getColor(applyInvert(progress)) : backgroundColor.get());
+        return toOverlayArgb(resolveSurfaceColor(backgroundMode.get(), backgroundColor.get(), progress));
     }
 
     /** Packed ARGB for the fill overlay at the given progress, or 0 (fully transparent - draw nothing) if faded out entirely. progress: 0 = empty/ready, 1 = full/just applied. */
     public int getFillOverlayArgb(float progress) {
-        boolean dynamic = dynamicColorTarget.get() == DynamicColorTarget.Fill || dynamicColorTarget.get() == DynamicColorTarget.Both;
-        return toOverlayArgb(dynamic ? getColor(applyInvert(progress)) : backgroundColor.get());
+        return toOverlayArgb(resolveSurfaceColor(fillMode.get(), fillColor.get(), progress));
+    }
+
+    private Color resolveSurfaceColor(SurfaceColorMode mode, SettingColor fixedColor, float progress) {
+        return switch (mode) {
+            case Fixed -> fixedColor;
+            case Cooldown -> getColor(applyInvert(progress));
+            case Rainbow -> getRainbowColor();
+            case Gradient -> getGradientColor();
+            case Flashing -> getFlashColor();
+            case HueShift -> getHueShiftColor();
+        };
     }
 
     private float applyInvert(float progress) {

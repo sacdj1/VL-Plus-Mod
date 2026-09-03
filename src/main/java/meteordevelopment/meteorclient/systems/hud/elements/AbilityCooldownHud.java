@@ -152,6 +152,22 @@ public class AbilityCooldownHud extends HudElement {
         .build()
     );
 
+    private final Setting<Boolean> invertProgress = sgGeneral.add(new BoolSetting.Builder()
+        .name("invert-progress")
+        .description("By default the bar is full right when the cooldown is applied and drains down to nothing as it becomes ready. Turning this on reverses that: it starts at nothing right when applied and fills up to full as it becomes ready. Affects color too, not just the fill amount, so the two always stay consistent with each other.")
+        .defaultValue(false)
+        .visible(showBar::get)
+        .build()
+    );
+
+    private final Setting<Boolean> invertFillDirection = sgGeneral.add(new BoolSetting.Builder()
+        .name("invert-fill-direction")
+        .description("Fills the bar from the right edge growing left, instead of the left edge growing right.")
+        .defaultValue(false)
+        .visible(showBar::get)
+        .build()
+    );
+
     private final Setting<Boolean> hideWhenReady = sgGeneral.add(new BoolSetting.Builder()
         .name("hide-when-ready")
         .description("Hides this element entirely once the ability has been ready for a while, instead of leaving a full/ready-colored bar on screen indefinitely. Still shows while positioning it in the HUD editor.")
@@ -303,6 +319,8 @@ public class AbilityCooldownHud extends HudElement {
 
     @Override
     public void render(HudRenderer renderer) {
+        // Raw, uninverted progress - drives sample tracking and the ETA estimate below, which both
+        // need to reflect the real rate of change regardless of how Invert Progress displays it.
         float progress = mc.player != null ? MathHelper.clamp(mc.player.experienceProgress, 0, 1) : 0;
         long now = System.currentTimeMillis();
 
@@ -329,13 +347,18 @@ public class AbilityCooldownHud extends HudElement {
             return;
         }
 
-        Color color = ready ? getReadyStyleColor() : gradientColor(progress);
+        // Display progress - what color/fill amount actually show, separate from the raw value
+        // tracked above.
+        float displayProgress = invertProgress.get() ? 1f - progress : progress;
+
+        Color color = ready ? getReadyStyleColor() : gradientColor(displayProgress);
 
         if (showBar.get()) {
             if (background.get()) renderer.quad(x, y, getWidth(), getHeight(), backgroundColor.get());
 
-            double fillWidth = (ready && fullBarWhenReady.get()) ? getWidth() : getWidth() * progress;
-            if (fillWidth > 0) renderer.quad(x, y, fillWidth, getHeight(), color);
+            double fillWidth = (ready && fullBarWhenReady.get()) ? getWidth() : getWidth() * displayProgress;
+            double fillX = invertFillDirection.get() ? x + getWidth() - fillWidth : x;
+            if (fillWidth > 0) renderer.quad(fillX, y, fillWidth, getHeight(), color);
         }
 
         String text = displayMode.get() == DisplayMode.Percent ? Math.round((1 - progress) * 100) + "%" : timeEstimate(progress);
