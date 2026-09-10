@@ -17,4 +17,7 @@ public interface IDrawContext {
     void meteor$vlPlusDrawColoredSprite(Sprite sprite, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha);
 
     void meteor$vlPlusDrawColoredFrameSprite(Sprite sprite, int fullWidth, int fullHeight, int frameX, int frameY, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha);
+
+    /** Draws a whole standalone (non-atlas) registered texture stretched to width/height, tinted - for GrayscaleSpriteCache's own generated textures, which cover their full 0-1 UV range with no atlas frame to account for. */
+    void meteor$vlPlusDrawColoredWholeTexture(net.minecraft.util.Identifier texture, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha);
 }

@@ -36,6 +36,7 @@ import meteordevelopment.meteorclient.systems.hud.elements.VanillaActionBarHud;
 import meteordevelopment.meteorclient.systems.hud.elements.VanillaScoreboardHud;
 import meteordevelopment.meteorclient.systems.hud.elements.VanillaItemNameHud;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.render.GrayscaleSpriteCache;
 import meteordevelopment.meteorclient.utils.render.VanillaHudRotationState;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.client.MinecraftClient;
@@ -773,34 +774,42 @@ public abstract class InGameHudMixin {
     }
 
     // Health Bar Adjust: tints the real hearts, same "Colorize" idea as XP Bar Adjust's own texture
-    // recolor - the heart TEXTURE stays exactly what it always was (container/full/half/poisoned/
-    // etc, hardcore variants included), just multiplied by the module's computed fill color. Uses
-    // the module's OWN color logic (Fixed/Rainbow/Gradient/Flashing/Hue Shift, Max/Low health)
-    // unconditionally whenever the module is active - no separate "apply to vanilla" toggle, since
-    // whether this affects anything visible is already controlled by whether the module itself is
-    // on. Falls back to plain white (no tint) when inactive, still respecting Alpha from a
-    // relocated Vanilla Health element if present.
+    // recolor - the heart TEXTURE'S SHAPE/SHADING stays exactly what it always was (container/full/
+    // half/poisoned/etc, hardcore variants included), but drawn from a grayscale-normalized copy
+    // (GrayscaleSpriteCache) rather than the original, so the tint multiply can actually reach its
+    // real target color instead of only ever darkening toward it - multiplying the original (mostly
+    // red, near-zero green/blue) heart texture by e.g. yellow can't add the green channel that
+    // isn't there, so it just stayed reddish regardless of the chosen tint. Uses the module's OWN
+    // color logic (Fixed/Rainbow/Gradient/Flashing/Hue Shift, Max/Low health) unconditionally
+    // whenever the module is active - no separate "apply to vanilla" toggle, since whether this
+    // affects anything visible is already controlled by whether the module itself is on. Falls back
+    // to the real (non-grayscale) sprite when inactive, still respecting Alpha from a relocated
+    // Vanilla Health element if present.
     @Redirect(method = "drawHeart", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V"))
     private void redirectDrawHeartColor(DrawContext context, Identifier texture, int x, int y, int width, int height) {
         HealthBarAdjust adjust = Modules.get().get(HealthBarAdjust.class);
         float[] shaderColor = RenderSystem.getShaderColor();
+        // The module's own Alpha applies whether or not Vanilla Health is relocated - multiplies
+        // with a relocated element's own Alpha (shaderColor[3]) rather than replacing it, so both
+        // can be set independently and still combine sensibly.
+        float effectiveAlpha = adjust.isActive() ? (float) (shaderColor[3] * adjust.getAlpha()) : shaderColor[3];
 
-        if (!adjust.isActive() && shaderColor[3] >= 1.0f) {
+        if (!adjust.isActive() && effectiveAlpha >= 1.0f) {
             context.drawGuiTexture(texture, x, y, width, height);
             return;
         }
 
-        float r = 1f, g = 1f, b = 1f;
         if (adjust.isActive()) {
             float progress = client.player != null && client.player.getMaxHealth() > 0 ? client.player.getHealth() / client.player.getMaxHealth() : 1f;
             Color tint = adjust.getFillColor(Color.WHITE, progress);
-            r = tint.r / 255f;
-            g = tint.g / 255f;
-            b = tint.b / 255f;
+
+            Identifier grayTexture = GrayscaleSpriteCache.get(texture);
+            ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredWholeTexture(grayTexture, x, y, 0, width, height, tint.r / 255f, tint.g / 255f, tint.b / 255f, effectiveAlpha);
+            return;
         }
 
         Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
-        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, r, g, b, shaderColor[3]);
+        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, 1f, 1f, 1f, effectiveAlpha);
     }
 
     // Stamina Bar Adjust: same as Health Bar Adjust above, for the real food/hunger icons.
@@ -808,23 +817,24 @@ public abstract class InGameHudMixin {
     private void redirectDrawFoodColor(DrawContext context, Identifier texture, int x, int y, int width, int height) {
         StaminaBarAdjust adjust = Modules.get().get(StaminaBarAdjust.class);
         float[] shaderColor = RenderSystem.getShaderColor();
+        float effectiveAlpha = adjust.isActive() ? (float) (shaderColor[3] * adjust.getAlpha()) : shaderColor[3];
 
-        if (!adjust.isActive() && shaderColor[3] >= 1.0f) {
+        if (!adjust.isActive() && effectiveAlpha >= 1.0f) {
             context.drawGuiTexture(texture, x, y, width, height);
             return;
         }
 
-        float r = 1f, g = 1f, b = 1f;
         if (adjust.isActive()) {
             float progress = client.player != null ? client.player.getHungerManager().getFoodLevel() / 20f : 1f;
             Color tint = adjust.getFillColor(Color.WHITE, progress);
-            r = tint.r / 255f;
-            g = tint.g / 255f;
-            b = tint.b / 255f;
+
+            Identifier grayTexture = GrayscaleSpriteCache.get(texture);
+            ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredWholeTexture(grayTexture, x, y, 0, width, height, tint.r / 255f, tint.g / 255f, tint.b / 255f, effectiveAlpha);
+            return;
         }
 
         Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
-        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, r, g, b, shaderColor[3]);
+        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, 1f, 1f, 1f, effectiveAlpha);
     }
 
     // Same as above, static variant - renderArmor is a static method, so its own redirect handler

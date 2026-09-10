@@ -211,4 +211,9 @@ public abstract class DrawContextMixin implements IDrawContext {
             sprite.getFrameV((float) frameY / fullHeight), sprite.getFrameV((float) (frameY + height) / fullHeight),
             red, green, blue, alpha);
     }
+
+    @Override
+    public void meteor$vlPlusDrawColoredWholeTexture(Identifier texture, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha) {
+        this.drawTexturedQuad(texture, x, x + width, y, y + height, z, 0f, 1f, 0f, 1f, red, green, blue, alpha);
+    }
 }

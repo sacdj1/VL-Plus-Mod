@@ -46,6 +46,16 @@ public class StaminaBarAdjust extends Module {
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgSpecialColors = settings.createGroup("Max/Low Hunger Color");
+
+    private final Setting<Integer> alpha = sgGeneral.add(new IntSetting.Builder()
+        .name("alpha")
+        .description("Transparency of the real food icons - 255 is fully opaque, 0 is invisible. Applies whether or not Vanilla Hunger is relocated (that element's own Alpha setting multiplies with this one if both are set).")
+        .defaultValue(255)
+        .range(0, 255)
+        .sliderRange(0, 255)
+        .build()
+    );
+
     private final SettingGroup sgBackgroundRainbow = settings.createGroup("Background Color (Rainbow)");
     private final SettingGroup sgBackgroundGradient = settings.createGroup("Background Color (Gradient / Flashing)");
     private final SettingGroup sgBackgroundHueShift = settings.createGroup("Background Color (Hue Shift)");
@@ -340,6 +350,10 @@ public class StaminaBarAdjust extends Module {
         wasAboveLowThreshold = above;
 
         if (lowFlashTicksRemaining > 0) lowFlashTicksRemaining--;
+    }
+
+    public double getAlpha() {
+        return alpha.get() / 255.0;
     }
 
     public Color getBackgroundColor(Color fallback) {
