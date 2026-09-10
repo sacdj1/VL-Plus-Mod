@@ -177,9 +177,27 @@ public abstract class DrawContextMixin implements IDrawContext {
     @Shadow
     abstract void drawTexturedQuad(Identifier texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, float red, float green, float blue, float alpha);
 
+    // Replicates onDrawGuiTextureRotationHead/Tail above (Keep Sprites Upright) manually, since
+    // this bypasses drawGuiTexture's own body entirely (and with it, those HEAD/TAIL hooks) -
+    // without this, Keep Sprites Upright silently stopped doing anything whenever an element's
+    // Alpha setting was active, since alpha < 1 is exactly what routes a draw through this method
+    // instead of the normal (rotation-hooked) drawGuiTexture path.
     @Override
     public void meteor$vlPlusDrawColoredSprite(Sprite sprite, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha) {
+        double angle = VanillaHudRotationState.statusBarSpriteCounterRotation;
+        MatrixStack matrices = ((DrawContext) (Object) this).getMatrices();
+
+        if (angle != 0) {
+            double centerX = x + width / 2.0, centerY = y + height / 2.0;
+            matrices.push();
+            matrices.translate(centerX, centerY, 0);
+            matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) angle));
+            matrices.translate(-centerX, -centerY, 0);
+        }
+
         this.drawTexturedQuad(sprite.getAtlasId(), x, x + width, y, y + height, z, sprite.getMinU(), sprite.getMaxU(), sprite.getMinV(), sprite.getMaxV(), red, green, blue, alpha);
+
+        if (angle != 0) matrices.pop();
     }
 
     // fullWidth/fullHeight are the sprite's own reference dimensions (UV fraction denominators),

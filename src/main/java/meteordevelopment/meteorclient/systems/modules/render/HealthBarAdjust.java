@@ -38,12 +38,6 @@ public class HealthBarAdjust extends Module {
         Hard
     }
 
-    public enum ApplyTo {
-        VanillaOnly,
-        BarOnly,
-        Both
-    }
-
     public enum LowHealthMode {
         Off,
         Permanent,
@@ -58,13 +52,6 @@ public class HealthBarAdjust extends Module {
     private final SettingGroup sgFillRainbow = settings.createGroup("Fill Color (Rainbow)");
     private final SettingGroup sgFillGradient = settings.createGroup("Fill Color (Gradient / Flashing)");
     private final SettingGroup sgFillHueShift = settings.createGroup("Fill Color (Hue Shift)");
-
-    private final Setting<ApplyTo> applyTo = sgGeneral.add(new EnumSetting.Builder<ApplyTo>()
-        .name("apply-to")
-        .description("Vanilla Only: tints the real heart row (hearts stay their own icons, just recolored) - works whether or not Vanilla Health is relocated. Bar Only: colors Health Bar HUD only, leaves vanilla hearts untouched. Both: both at once.")
-        .defaultValue(ApplyTo.Both)
-        .build()
-    );
 
     // Background Color
 
@@ -353,14 +340,6 @@ public class HealthBarAdjust extends Module {
         wasAboveLowThreshold = above;
 
         if (lowFlashTicksRemaining > 0) lowFlashTicksRemaining--;
-    }
-
-    public boolean appliesToVanilla() {
-        return applyTo.get() != ApplyTo.BarOnly;
-    }
-
-    public boolean appliesToBar() {
-        return applyTo.get() != ApplyTo.VanillaOnly;
     }
 
     public Color getBackgroundColor(Color fallback) {

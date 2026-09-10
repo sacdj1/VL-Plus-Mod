@@ -15,7 +15,9 @@ import meteordevelopment.meteorclient.events.render.RenderTitleEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.misc.BetterChat;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
+import meteordevelopment.meteorclient.systems.modules.render.HealthBarAdjust;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
+import meteordevelopment.meteorclient.systems.modules.render.StaminaBarAdjust;
 import meteordevelopment.meteorclient.systems.modules.render.XPBarAdjust;
 import meteordevelopment.meteorclient.systems.modules.render.XPLevelAdjust;
 import meteordevelopment.meteorclient.systems.hud.Hud;
@@ -755,9 +757,10 @@ public abstract class InGameHudMixin {
     // this file's own alpha-enabled relocation windows) - a plain passthrough otherwise, so this
     // has no effect on anything this mod doesn't already control.
     //
-    // Covers the plain (non-cropped) overload: hearts, food, armor points, mount hearts, and the
-    // XP bar's own background track.
-    @Redirect(method = {"renderExperienceBar", "drawHeart", "renderFood", "renderMountHealth"}, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V"))
+    // Covers the plain (non-cropped) overload: armor points, mount hearts, and the XP bar's own
+    // background track. Hearts and food each get their own dedicated handler below instead (Health
+    // Bar Adjust/Stamina Bar Adjust tint those, not just alpha).
+    @Redirect(method = {"renderExperienceBar", "renderMountHealth"}, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V"))
     private void redirectDrawGuiTextureAlpha(DrawContext context, Identifier texture, int x, int y, int width, int height) {
         float[] c = RenderSystem.getShaderColor();
         if (c[3] >= 1.0f) {
@@ -767,6 +770,61 @@ public abstract class InGameHudMixin {
 
         Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
         ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
+    }
+
+    // Health Bar Adjust: tints the real hearts, same "Colorize" idea as XP Bar Adjust's own texture
+    // recolor - the heart TEXTURE stays exactly what it always was (container/full/half/poisoned/
+    // etc, hardcore variants included), just multiplied by the module's computed fill color. Uses
+    // the module's OWN color logic (Fixed/Rainbow/Gradient/Flashing/Hue Shift, Max/Low health)
+    // unconditionally whenever the module is active - no separate "apply to vanilla" toggle, since
+    // whether this affects anything visible is already controlled by whether the module itself is
+    // on. Falls back to plain white (no tint) when inactive, still respecting Alpha from a
+    // relocated Vanilla Health element if present.
+    @Redirect(method = "drawHeart", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V"))
+    private void redirectDrawHeartColor(DrawContext context, Identifier texture, int x, int y, int width, int height) {
+        HealthBarAdjust adjust = Modules.get().get(HealthBarAdjust.class);
+        float[] shaderColor = RenderSystem.getShaderColor();
+
+        if (!adjust.isActive() && shaderColor[3] >= 1.0f) {
+            context.drawGuiTexture(texture, x, y, width, height);
+            return;
+        }
+
+        float r = 1f, g = 1f, b = 1f;
+        if (adjust.isActive()) {
+            float progress = client.player != null && client.player.getMaxHealth() > 0 ? client.player.getHealth() / client.player.getMaxHealth() : 1f;
+            Color tint = adjust.getFillColor(Color.WHITE, progress);
+            r = tint.r / 255f;
+            g = tint.g / 255f;
+            b = tint.b / 255f;
+        }
+
+        Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
+        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, r, g, b, shaderColor[3]);
+    }
+
+    // Stamina Bar Adjust: same as Health Bar Adjust above, for the real food/hunger icons.
+    @Redirect(method = "renderFood", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V"))
+    private void redirectDrawFoodColor(DrawContext context, Identifier texture, int x, int y, int width, int height) {
+        StaminaBarAdjust adjust = Modules.get().get(StaminaBarAdjust.class);
+        float[] shaderColor = RenderSystem.getShaderColor();
+
+        if (!adjust.isActive() && shaderColor[3] >= 1.0f) {
+            context.drawGuiTexture(texture, x, y, width, height);
+            return;
+        }
+
+        float r = 1f, g = 1f, b = 1f;
+        if (adjust.isActive()) {
+            float progress = client.player != null ? client.player.getHungerManager().getFoodLevel() / 20f : 1f;
+            Color tint = adjust.getFillColor(Color.WHITE, progress);
+            r = tint.r / 255f;
+            g = tint.g / 255f;
+            b = tint.b / 255f;
+        }
+
+        Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
+        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, r, g, b, shaderColor[3]);
     }
 
     // Same as above, static variant - renderArmor is a static method, so its own redirect handler

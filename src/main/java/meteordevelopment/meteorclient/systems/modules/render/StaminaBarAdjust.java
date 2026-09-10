@@ -38,12 +38,6 @@ public class StaminaBarAdjust extends Module {
         Hard
     }
 
-    public enum ApplyTo {
-        VanillaOnly,
-        BarOnly,
-        Both
-    }
-
     public enum LowHealthMode {
         Off,
         Permanent,
@@ -51,20 +45,13 @@ public class StaminaBarAdjust extends Module {
     }
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
-    private final SettingGroup sgSpecialColors = settings.createGroup("Max/Low Health Color");
+    private final SettingGroup sgSpecialColors = settings.createGroup("Max/Low Hunger Color");
     private final SettingGroup sgBackgroundRainbow = settings.createGroup("Background Color (Rainbow)");
     private final SettingGroup sgBackgroundGradient = settings.createGroup("Background Color (Gradient / Flashing)");
     private final SettingGroup sgBackgroundHueShift = settings.createGroup("Background Color (Hue Shift)");
     private final SettingGroup sgFillRainbow = settings.createGroup("Fill Color (Rainbow)");
     private final SettingGroup sgFillGradient = settings.createGroup("Fill Color (Gradient / Flashing)");
     private final SettingGroup sgFillHueShift = settings.createGroup("Fill Color (Hue Shift)");
-
-    private final Setting<ApplyTo> applyTo = sgGeneral.add(new EnumSetting.Builder<ApplyTo>()
-        .name("apply-to")
-        .description("Vanilla Only: tints the real food/hunger icon row (icons stay their own shapes, just recolored) - works whether or not Vanilla Hunger is relocated. Bar Only: colors Stamina Bar HUD only, leaves vanilla food icons untouched. Both: both at once.")
-        .defaultValue(ApplyTo.Both)
-        .build()
-    );
 
     // Background Color
 
@@ -353,14 +340,6 @@ public class StaminaBarAdjust extends Module {
         wasAboveLowThreshold = above;
 
         if (lowFlashTicksRemaining > 0) lowFlashTicksRemaining--;
-    }
-
-    public boolean appliesToVanilla() {
-        return applyTo.get() != ApplyTo.BarOnly;
-    }
-
-    public boolean appliesToBar() {
-        return applyTo.get() != ApplyTo.VanillaOnly;
     }
 
     public Color getBackgroundColor(Color fallback) {
