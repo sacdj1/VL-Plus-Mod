@@ -227,7 +227,7 @@ public class StaminaBarHud extends HudElement {
 
         if (displayMode.get() != DisplayMode.Numbers) {
             StaminaBarAdjust adjust = Modules.get().get(StaminaBarAdjust.class);
-            Color background = adjust.isActive() ? adjust.getBackgroundColor(backgroundColor.get()) : backgroundColor.get();
+            Color background = adjust.isActive() ? adjust.getBackgroundColor(backgroundColor.get(), target) : backgroundColor.get();
             Color fill = adjust.isActive() ? adjust.getFillColor(fillColor.get(), target) : fillColor.get();
 
             drawRotatedQuad(renderer, 0, 0, w, h, background);

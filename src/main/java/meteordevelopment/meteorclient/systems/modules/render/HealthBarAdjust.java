@@ -12,6 +12,7 @@ import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.util.math.MathHelper;
 
 import java.util.List;
 
@@ -30,7 +31,8 @@ public class HealthBarAdjust extends Module {
         Rainbow,
         Gradient,
         Flashing,
-        HueShift
+        HueShift,
+        ByValue
     }
 
     public enum RainbowTransition {
@@ -59,9 +61,11 @@ public class HealthBarAdjust extends Module {
     private final SettingGroup sgBackgroundRainbow = settings.createGroup("Background Color (Rainbow)");
     private final SettingGroup sgBackgroundGradient = settings.createGroup("Background Color (Gradient / Flashing)");
     private final SettingGroup sgBackgroundHueShift = settings.createGroup("Background Color (Hue Shift)");
+    private final SettingGroup sgBackgroundByValue = settings.createGroup("Background Color (By Value)");
     private final SettingGroup sgFillRainbow = settings.createGroup("Fill Color (Rainbow)");
     private final SettingGroup sgFillGradient = settings.createGroup("Fill Color (Gradient / Flashing)");
     private final SettingGroup sgFillHueShift = settings.createGroup("Fill Color (Hue Shift)");
+    private final SettingGroup sgFillByValue = settings.createGroup("Fill Color (By Value)");
 
     // Background Color
 
@@ -238,6 +242,26 @@ public class HealthBarAdjust extends Module {
         .build()
     );
 
+    // Background Color (By Value) - smoothly blends between two colors based on the current health
+    // percent itself, unlike Max/Low Health Color above (hard cutoffs at specific points/
+    // thresholds) - "one color at high health, another at low health, and everything in between".
+
+    private final Setting<SettingColor> backgroundHighColor = sgBackgroundByValue.add(new ColorSetting.Builder()
+        .name("background-high-value-color")
+        .description("Color at full health - blends toward Low Value Color below as health drops.")
+        .defaultValue(new SettingColor(25, 100, 25))
+        .visible(() -> backgroundMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<SettingColor> backgroundLowColor = sgBackgroundByValue.add(new ColorSetting.Builder()
+        .name("background-low-value-color")
+        .description("Color at zero health - Background High Value Color above blends toward this as health drops.")
+        .defaultValue(new SettingColor(100, 25, 25))
+        .visible(() -> backgroundMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
     // Fill Color (Rainbow)
 
     private final Setting<RainbowTransition> fillRainbowTransition = sgFillRainbow.add(new EnumSetting.Builder<RainbowTransition>()
@@ -326,6 +350,24 @@ public class HealthBarAdjust extends Module {
         .build()
     );
 
+    // Fill Color (By Value) - see Background Color (By Value) above for the same idea.
+
+    private final Setting<SettingColor> fillHighColor = sgFillByValue.add(new ColorSetting.Builder()
+        .name("fill-high-value-color")
+        .description("Color at full health - blends toward Low Value Color below as health drops.")
+        .defaultValue(new SettingColor(60, 220, 60))
+        .visible(() -> fillMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<SettingColor> fillLowColor = sgFillByValue.add(new ColorSetting.Builder()
+        .name("fill-low-value-color")
+        .description("Color at zero health - Fill High Value Color above blends toward this as health drops.")
+        .defaultValue(new SettingColor(220, 30, 30))
+        .visible(() -> fillMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
     private boolean wasAboveLowThreshold = true;
     private int lowFlashTicksRemaining = 0;
 
@@ -356,17 +398,19 @@ public class HealthBarAdjust extends Module {
         return alpha.get() / 255.0;
     }
 
-    public Color getBackgroundColor(Color fallback) {
+    /** progress: current/max health, 0-1 - used by By Value mode below (a smooth blend, unlike the hard-cutoff Max/Low Health Color, which only applies to Fill). */
+    public Color getBackgroundColor(Color fallback, float progress) {
         return switch (backgroundMode.get()) {
             case Fixed -> backgroundColor.get();
             case Rainbow -> rainbowColor(backgroundRainbowTransition.get(), backgroundRainbowSteps.get(), backgroundRainbowSpeed.get());
             case Gradient -> gradientColor(backgroundGradientColors.get(), backgroundGradientSpeed.get());
             case Flashing -> flashColor(backgroundFlashColors.get(), fallback);
             case HueShift -> hueShiftColor(backgroundHueShiftBaseColor.get(), backgroundHueShiftSpeed.get(), backgroundHueShiftRange.get());
+            case ByValue -> byValueColor(backgroundHighColor.get(), backgroundLowColor.get(), progress);
         };
     }
 
-    /** progress: current/max health, 0-1 - used for the Max/Low health color overrides below, which take priority over Fill Mode. */
+    /** progress: current/max health, 0-1 - used for the Max/Low health color overrides below (hard cutoffs), which take priority over Fill Mode, and for By Value mode (a smooth blend across the whole range instead). */
     public Color getFillColor(Color fallback, float progress) {
         if (maxHealthColorEnabled.get() && progress >= 0.999f) return maxHealthColor.get();
 
@@ -379,7 +423,20 @@ public class HealthBarAdjust extends Module {
             case Gradient -> gradientColor(fillGradientColors.get(), fillGradientSpeed.get());
             case Flashing -> flashColor(fillFlashColors.get(), fallback);
             case HueShift -> hueShiftColor(fillHueShiftBaseColor.get(), fillHueShiftSpeed.get(), fillHueShiftRange.get());
+            case ByValue -> byValueColor(fillHighColor.get(), fillLowColor.get(), progress);
         };
+    }
+
+    /** Linear blend from lowColor (progress 0) to highColor (progress 1) - "one color at high health, another at low health". */
+    private Color byValueColor(SettingColor highColor, SettingColor lowColor, float progress) {
+        float t = MathHelper.clamp(progress, 0f, 1f);
+
+        return new Color(
+            (int) (lowColor.r + (highColor.r - lowColor.r) * t),
+            (int) (lowColor.g + (highColor.g - lowColor.g) * t),
+            (int) (lowColor.b + (highColor.b - lowColor.b) * t),
+            (int) (lowColor.a + (highColor.a - lowColor.a) * t)
+        );
     }
 
     // Shared math only - Background Color and Fill Color each bring their own fully independent

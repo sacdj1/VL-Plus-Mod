@@ -212,8 +212,26 @@ public abstract class DrawContextMixin implements IDrawContext {
             red, green, blue, alpha);
     }
 
+    // Same Keep Sprites Upright replication as meteor$vlPlusDrawColoredSprite above - this is a
+    // SEPARATE draw path (used whenever Health/Stamina Bar Adjust is actively tinting, via its
+    // grayscale texture instead of the real sprite), so it needs the exact same counter-rotation
+    // wrapping independently, or it silently loses rotation again the moment that path is the one
+    // actually taken.
     @Override
     public void meteor$vlPlusDrawColoredWholeTexture(Identifier texture, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha) {
+        double angle = VanillaHudRotationState.statusBarSpriteCounterRotation;
+        MatrixStack matrices = ((DrawContext) (Object) this).getMatrices();
+
+        if (angle != 0) {
+            double centerX = x + width / 2.0, centerY = y + height / 2.0;
+            matrices.push();
+            matrices.translate(centerX, centerY, 0);
+            matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) angle));
+            matrices.translate(-centerX, -centerY, 0);
+        }
+
         this.drawTexturedQuad(texture, x, x + width, y, y + height, z, 0f, 1f, 0f, 1f, red, green, blue, alpha);
+
+        if (angle != 0) matrices.pop();
     }
 }
