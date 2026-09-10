@@ -40,13 +40,24 @@ public class GuiScaleAdjust extends Module {
         .build()
     );
 
+    // overridden tracks whether OUR scale override is currently the one in effect, so revert()
+    // only ever calls onResolutionChanged() when there's actually something to undo - not on every
+    // single non-inventory screen open regardless. applying guards against reentrancy:
+    // onResolutionChanged() notifies the current screen of a "resize", and at least one other mod's
+    // screen (confirmed live: Sodium's options GUI) reacts to that by calling setScreen() again,
+    // which re-fires OpenScreenEvent and would otherwise call back into this same method - infinite
+    // recursion (StackOverflowError, crashed the game). Being already inside apply()/revert() short-
+    // circuits that immediately instead.
+    private boolean overridden = false;
+    private boolean applying = false;
+
     public GuiScaleAdjust() {
         super(Categories.Render, "gui-scale-adjust", "Overrides the GUI scale while an inventory-type screen is open, independent of your normal GUI Scale option.");
     }
 
     @Override
     public void onDeactivate() {
-        mc.onResolutionChanged();
+        revert();
     }
 
     private void reapplyIfInventoryOpen() {
@@ -54,8 +65,28 @@ public class GuiScaleAdjust extends Module {
     }
 
     private void apply() {
-        mc.getWindow().setScaleFactor(inventoryScale.get());
-        mc.mouse.onResolutionChanged();
+        if (applying) return;
+        applying = true;
+
+        try {
+            mc.getWindow().setScaleFactor(inventoryScale.get());
+            mc.mouse.onResolutionChanged();
+            overridden = true;
+        } finally {
+            applying = false;
+        }
+    }
+
+    private void revert() {
+        if (!overridden || applying) return;
+        applying = true;
+
+        try {
+            mc.onResolutionChanged();
+            overridden = false;
+        } finally {
+            applying = false;
+        }
     }
 
     @EventHandler
@@ -65,7 +96,7 @@ public class GuiScaleAdjust extends Module {
         if (event.screen instanceof HandledScreen) {
             apply();
         } else {
-            mc.onResolutionChanged();
+            revert();
         }
     }
 }
