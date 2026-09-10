@@ -8,6 +8,7 @@ package meteordevelopment.meteorclient.mixin;
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.mojang.blaze3d.systems.RenderSystem;
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.mixininterface.IDrawContext;
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.render.RenderScoreboardEvent;
 import meteordevelopment.meteorclient.events.render.RenderTitleEvent;
@@ -765,7 +766,7 @@ public abstract class InGameHudMixin {
         }
 
         Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
-        ((DrawContextMixin) (Object) context).vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
+        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
     }
 
     // Same as above, static variant - renderArmor is a static method, so its own redirect handler
@@ -779,7 +780,7 @@ public abstract class InGameHudMixin {
         }
 
         Sprite sprite = MinecraftClient.getInstance().getGuiAtlasManager().getSprite(texture);
-        ((DrawContextMixin) (Object) context).vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
+        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
     }
 
     // Covers the cropped/frame overload: only the XP bar's own progress/fill texture uses this one,
@@ -797,7 +798,7 @@ public abstract class InGameHudMixin {
         }
 
         Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
-        ((DrawContextMixin) (Object) context).vlPlusDrawColoredFrameSprite(sprite, fullWidth, fullHeight, frameX, frameY, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
+        ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredFrameSprite(sprite, fullWidth, fullHeight, frameX, frameY, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
     }
 
     @Inject(method = "renderHotbar", at = @At("HEAD"), cancellable = true)

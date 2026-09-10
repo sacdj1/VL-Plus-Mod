@@ -7,6 +7,7 @@ package meteordevelopment.meteorclient.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import com.llamalad7.mixinextras.injector.ModifyReceiver;
+import meteordevelopment.meteorclient.mixininterface.IDrawContext;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.ItemInfo;
 import meteordevelopment.meteorclient.utils.render.VanillaHudRotationState;
@@ -34,7 +35,7 @@ import java.util.Optional;
 import java.util.function.Consumer;
 
 @Mixin(value = DrawContext.class)
-public abstract class DrawContextMixin {
+public abstract class DrawContextMixin implements IDrawContext {
     @Inject(method = "drawTooltip(Lnet/minecraft/client/font/TextRenderer;Ljava/util/List;Ljava/util/Optional;II)V", at = @At(value = "INVOKE", target = "Ljava/util/Optional;ifPresent(Ljava/util/function/Consumer;)V", shift = At.Shift.BEFORE), locals = LocalCapture.CAPTURE_FAILHARD)
     private void onDrawTooltip(TextRenderer textRenderer, List<Text> text, Optional<TooltipData> data, int x, int y, CallbackInfo ci, List<TooltipComponent> list) {
         if (data.isPresent() && data.get() instanceof MeteorTooltipData meteorTooltipData)
@@ -176,7 +177,8 @@ public abstract class DrawContextMixin {
     @Shadow
     abstract void drawTexturedQuad(Identifier texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, float red, float green, float blue, float alpha);
 
-    public void vlPlusDrawColoredSprite(Sprite sprite, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha) {
+    @Override
+    public void meteor$vlPlusDrawColoredSprite(Sprite sprite, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha) {
         this.drawTexturedQuad(sprite.getAtlasId(), x, x + width, y, y + height, z, sprite.getMinU(), sprite.getMaxU(), sprite.getMinV(), sprite.getMaxV(), red, green, blue, alpha);
     }
 
@@ -184,7 +186,8 @@ public abstract class DrawContextMixin {
     // frameX/frameY the offset into it (numerators) - separate from width/height, the actual drawn
     // (possibly cropped, e.g. XP bar progress) size. Mirrors DrawContext's own private
     // drawSprite(Sprite, i, j, k, l, x, y, z, width, height) exactly, just with color added.
-    public void vlPlusDrawColoredFrameSprite(Sprite sprite, int fullWidth, int fullHeight, int frameX, int frameY, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha) {
+    @Override
+    public void meteor$vlPlusDrawColoredFrameSprite(Sprite sprite, int fullWidth, int fullHeight, int frameX, int frameY, int x, int y, int z, int width, int height, float red, float green, float blue, float alpha) {
         this.drawTexturedQuad(sprite.getAtlasId(), x, x + width, y, y + height, z,
             sprite.getFrameU((float) frameX / fullWidth), sprite.getFrameU((float) (frameX + width) / fullWidth),
             sprite.getFrameV((float) frameY / fullHeight), sprite.getFrameV((float) (frameY + height) / fullHeight),
