@@ -17,13 +17,12 @@ import meteordevelopment.meteorclient.systems.hud.HudRenderer;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 
 /**
- * Doesn't draw anything itself - see VanillaHotbarHud. InGameHudMixin redirects vanilla's own
- * mount health row (shown while riding a horse/similar) to this element's position/scale. Only
- * visible in real gameplay while actually mounted - shows a placeholder box in the editor so it's
- * still positionable even when not currently riding anything.
+ * Doesn't draw anything itself - see VanillaHotbarHud. InGameHudMixin redirects vanilla's own XP
+ * bar (background/track and fill/progress both, plus XPBarAdjust's recolor overlays on top of it,
+ * if that module is also active) to this element's position/scale.
  */
-public class VanillaMountHealthHud extends HudElement {
-    public static final HudElementInfo<VanillaMountHealthHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-mount-health", "Moves and scales the real mount health row (shown while riding) - reported not working correctly, under investigation.", VanillaMountHealthHud::new);
+public class VanillaXPBarHud extends HudElement {
+    public static final HudElementInfo<VanillaXPBarHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-xp-bar", "Moves and scales the real XP bar.", VanillaXPBarHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -36,7 +35,27 @@ public class VanillaMountHealthHud extends HudElement {
 
     private final Setting<Double> scale = sgGeneral.add(new DoubleSetting.Builder()
         .name("scale")
-        .description("Size multiplier over vanilla's normal size.")
+        .description("Overall size multiplier, multiplied on top of Scale X/Scale Y - scales both dimensions together.")
+        .defaultValue(1.0)
+        .min(0.1)
+        .sliderRange(0.1, 20)
+        .onChanged(v -> calculateSize())
+        .build()
+    );
+
+    private final Setting<Double> scaleX = sgGeneral.add(new DoubleSetting.Builder()
+        .name("scale-x")
+        .description("Horizontal scale, independent of Scale Y - stretches/squashes the bar without affecting its height.")
+        .defaultValue(1.0)
+        .min(0.1)
+        .sliderRange(0.1, 20)
+        .onChanged(v -> calculateSize())
+        .build()
+    );
+
+    private final Setting<Double> scaleY = sgGeneral.add(new DoubleSetting.Builder()
+        .name("scale-y")
+        .description("Vertical scale, independent of Scale X - stretches/squashes the bar without affecting its width.")
         .defaultValue(1.0)
         .min(0.1)
         .sliderRange(0.1, 20)
@@ -53,25 +72,25 @@ public class VanillaMountHealthHud extends HudElement {
         .build()
     );
 
-    private final Setting<Boolean> keepSpritesUpright = sgGeneral.add(new BoolSetting.Builder()
-        .name("keep-sprites-upright")
-        .description("Counter-rotates each individual icon so they stay upright even while this element itself is rotated - only the row layout rotates, not the icons themselves.")
-        .defaultValue(true)
-        .visible(() -> rotation.get() != 0)
-        .build()
-    );
-
-    public VanillaMountHealthHud() {
+    public VanillaXPBarHud() {
         super(INFO);
         calculateSize();
     }
 
     private void calculateSize() {
-        setSize(81 * scale.get(), 9 * scale.get());
+        setSize(183 * scaleX.get() * scale.get(), 5 * scaleY.get() * scale.get());
     }
 
     public double getScale() {
         return scale.get();
+    }
+
+    public double getScaleX() {
+        return scaleX.get() * scale.get();
+    }
+
+    public double getScaleY() {
+        return scaleY.get() * scale.get();
     }
 
     public int getRotation() {
@@ -85,10 +104,6 @@ public class VanillaMountHealthHud extends HudElement {
 
     public boolean isHidden() {
         return hide.get();
-    }
-
-    public boolean keepSpritesUpright() {
-        return keepSpritesUpright.get();
     }
 
     @Override

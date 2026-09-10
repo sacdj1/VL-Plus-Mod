@@ -168,6 +168,24 @@ public class AbilityCooldownHud extends HudElement {
         .build()
     ));
 
+    private final Setting<Boolean> smoothFill = sgGeneral.add(new BoolSetting.Builder()
+        .name("smooth-fill")
+        .description("Interpolates the bar's fill/color smoothly toward its real value over time, instead of snapping instantly whenever the server syncs a new value - most servers only update this in discrete steps rather than every frame. Doesn't affect the ETA estimate or Ready state, which both need the real, unsmoothed value.")
+        .defaultValue(false)
+        .visible(showBar::get)
+        .build()
+    );
+
+    private final Setting<Double> smoothSpeed = sgGeneral.add(new DoubleSetting.Builder()
+        .name("smooth-speed")
+        .description("How fast the displayed fill catches up to the real value. Higher catches up faster/snappier, lower lags more/smoother.")
+        .defaultValue(15)
+        .min(0.1)
+        .sliderRange(1, 60)
+        .visible(() -> showBar.get() && smoothFill.get())
+        .build()
+    );
+
     private final Setting<Boolean> hideWhenReady = sgGeneral.add(new BoolSetting.Builder()
         .name("hide-when-ready")
         .description("Hides this element entirely once the ability has been ready for a while, instead of leaving a full/ready-colored bar on screen indefinitely. Still shows while positioning it in the HUD editor.")
@@ -287,6 +305,29 @@ public class AbilityCooldownHud extends HudElement {
     private long lastSampleTime = -1;
     private float lastProgress = -1;
     private long readySinceMs = -1;
+    private float smoothedProgress = -1;
+    private long lastSmoothNanos = -1;
+
+    /** Same exponential-approach technique as XPBarAdjust's own getRenderProgress. */
+    private float getRenderProgress(float target) {
+        if (!smoothFill.get()) {
+            smoothedProgress = target;
+            lastSmoothNanos = -1;
+            return target;
+        }
+
+        long now = System.nanoTime();
+        if (smoothedProgress < 0 || lastSmoothNanos < 0) {
+            smoothedProgress = target;
+        } else {
+            float dt = (now - lastSmoothNanos) / 1_000_000_000f;
+            float t = 1f - (float) Math.exp(-smoothSpeed.get() * dt);
+            smoothedProgress += (target - smoothedProgress) * t;
+        }
+        lastSmoothNanos = now;
+
+        return smoothedProgress;
+    }
 
     public AbilityCooldownHud() {
         super(INFO);
@@ -329,8 +370,10 @@ public class AbilityCooldownHud extends HudElement {
         }
 
         // Display progress - what color/fill amount actually show, separate from the raw value
-        // tracked above.
-        float displayProgress = invertProgress.get() ? 1f - progress : progress;
+        // tracked above (ready state, sample tracking, and the ETA text below all keep using the
+        // real, unsmoothed progress - only the bar/color's own visual catch-up is smoothed).
+        float renderProgress = getRenderProgress(progress);
+        float displayProgress = invertProgress.get() ? 1f - renderProgress : renderProgress;
 
         Color color = ready ? getReadyStyleColor() : gradientColor(displayProgress);
 

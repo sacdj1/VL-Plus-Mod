@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.systems.hud;
 
 import com.google.common.cache.CacheBuilder;
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -53,8 +54,23 @@ public class HudRenderer {
     public DrawContext drawContext;
     public double delta;
 
+    // Set (and reset back to 1) around each element's own render() call - see Hud.onRender/
+    // HudEditorScreen.renderElements - from that element's own Alpha setting (HudElement.alpha).
+    // Multiplies every color this renderer draws with, including item icons via setShaderColor,
+    // so a single per-element setting fades everything that element draws uniformly.
+    private double elementAlpha = 1.0;
+
     private HudRenderer() {
         MeteorClient.EVENT_BUS.subscribe(this);
+    }
+
+    public void setElementAlpha(double alpha) {
+        this.elementAlpha = alpha;
+    }
+
+    private Color scaled(Color color) {
+        if (elementAlpha >= 1.0) return color;
+        return new Color(color.r, color.g, color.b, (int) Math.round(color.a * elementAlpha));
     }
 
     public void begin(DrawContext drawContext) {
@@ -101,30 +117,31 @@ public class HudRenderer {
     }
 
     public void line(double x1, double y1, double x2, double y2, Color color) {
-        Renderer2D.COLOR.line(x1, y1, x2, y2, color);
+        Renderer2D.COLOR.line(x1, y1, x2, y2, scaled(color));
     }
 
     public void quad(double x, double y, double width, double height, Color color) {
-        Renderer2D.COLOR.quad(x, y, width, height, color);
+        Renderer2D.COLOR.quad(x, y, width, height, scaled(color));
     }
 
     public void quad(double x, double y, double width, double height, Color cTopLeft, Color cTopRight, Color cBottomRight, Color cBottomLeft) {
-        Renderer2D.COLOR.quad(x, y, width, height, cTopLeft, cTopRight, cBottomRight, cBottomLeft);
+        Renderer2D.COLOR.quad(x, y, width, height, scaled(cTopLeft), scaled(cTopRight), scaled(cBottomRight), scaled(cBottomLeft));
     }
 
     public void triangle(double x1, double y1, double x2, double y2, double x3, double y3, Color color) {
-        Renderer2D.COLOR.triangle(x1, y1, x2, y2, x3, y3, color);
+        Renderer2D.COLOR.triangle(x1, y1, x2, y2, x3, y3, scaled(color));
     }
 
     public void texture(Identifier id, double x, double y, double width, double height, Color color) {
         GL.bindTexture(id);
 
         Renderer2D.TEXTURE.begin();
-        Renderer2D.TEXTURE.texQuad(x, y, width, height, color);
+        Renderer2D.TEXTURE.texQuad(x, y, width, height, scaled(color));
         Renderer2D.TEXTURE.render(null);
     }
 
     public double text(String text, double x, double y, Color color, boolean shadow, double scale) {
+        color = scaled(color);
         if (scale == -1) scale = hud.getTextScale();
 
         if (!hud.hasCustomFont()) {
@@ -195,16 +212,30 @@ public class HudRenderer {
         return textHeight(false, -1);
     }
 
+    // Captures the CURRENT elementAlpha at the moment post() is called (i.e. during that element's
+    // own render()), not whatever it happens to be when the deferred task actually runs at end()
+    // (always 1.0 by then - the per-element alpha window in Hud.onRender/HudEditorScreen resets it
+    // right after render() returns, long before postTasks run). Without this, anything drawn via
+    // post() - item icons especially - ignored the element's own Alpha setting entirely.
     public void post(Runnable task) {
-        postTasks.add(task);
+        double capturedAlpha = elementAlpha;
+
+        postTasks.add(() -> {
+            double previous = elementAlpha;
+            elementAlpha = capturedAlpha;
+            task.run();
+            elementAlpha = previous;
+        });
     }
 
     public void item(ItemStack itemStack, int x, int y, float scale, boolean overlay, String countOverlay) {
+        if (elementAlpha < 1.0) RenderSystem.setShaderColor(1f, 1f, 1f, (float) elementAlpha);
         RenderUtils.drawItem(drawContext, itemStack, x, y, scale, overlay, countOverlay);
+        if (elementAlpha < 1.0) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
     }
 
     public void item(ItemStack itemStack, int x, int y, float scale, boolean overlay) {
-        RenderUtils.drawItem(drawContext, itemStack, x, y, scale, overlay);
+        item(itemStack, x, y, scale, overlay, null);
     }
 
     private FontHolder getFontHolder(double scale, boolean render) {

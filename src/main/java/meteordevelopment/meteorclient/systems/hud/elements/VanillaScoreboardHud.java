@@ -18,18 +18,21 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 
 /**
  * Doesn't draw anything itself - see VanillaHotbarHud. InGameHudMixin redirects vanilla's own
- * mount health row (shown while riding a horse/similar) to this element's position/scale. Only
- * visible in real gameplay while actually mounted - shows a placeholder box in the editor so it's
- * still positionable even when not currently riding anything.
+ * scoreboard sidebar draw to this element's position/scale. Unlike the other Vanilla elements,
+ * vanilla queues the sidebar's actual draw via DrawContext.draw(Runnable) (a deferred callback,
+ * used so it layers on top of chat/etc.) rather than drawing inline - the reposition transform has
+ * to still be on the matrix stack whenever that callback actually runs, not just during
+ * renderScoreboardSidebar's own head-to-tail window, or the reposition would have no visible
+ * effect. Marked experimental until confirmed live.
  */
-public class VanillaMountHealthHud extends HudElement {
-    public static final HudElementInfo<VanillaMountHealthHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-mount-health", "Moves and scales the real mount health row (shown while riding) - reported not working correctly, under investigation.", VanillaMountHealthHud::new);
+public class VanillaScoreboardHud extends HudElement {
+    public static final HudElementInfo<VanillaScoreboardHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-scoreboard", "Moves and scales the real scoreboard sidebar - experimental, not yet confirmed working live.", VanillaScoreboardHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<Boolean> hide = sgGeneral.add(new BoolSetting.Builder()
         .name("hide")
-        .description("Hides the real vanilla element entirely instead of repositioning it.")
+        .description("Hides the real scoreboard sidebar entirely instead of repositioning it.")
         .defaultValue(false)
         .build()
     );
@@ -53,21 +56,13 @@ public class VanillaMountHealthHud extends HudElement {
         .build()
     );
 
-    private final Setting<Boolean> keepSpritesUpright = sgGeneral.add(new BoolSetting.Builder()
-        .name("keep-sprites-upright")
-        .description("Counter-rotates each individual icon so they stay upright even while this element itself is rotated - only the row layout rotates, not the icons themselves.")
-        .defaultValue(true)
-        .visible(() -> rotation.get() != 0)
-        .build()
-    );
-
-    public VanillaMountHealthHud() {
+    public VanillaScoreboardHud() {
         super(INFO);
         calculateSize();
     }
 
     private void calculateSize() {
-        setSize(81 * scale.get(), 9 * scale.get());
+        setSize(120 * scale.get(), 120 * scale.get());
     }
 
     public double getScale() {
@@ -85,10 +80,6 @@ public class VanillaMountHealthHud extends HudElement {
 
     public boolean isHidden() {
         return hide.get();
-    }
-
-    public boolean keepSpritesUpright() {
-        return keepSpritesUpright.get();
     }
 
     @Override

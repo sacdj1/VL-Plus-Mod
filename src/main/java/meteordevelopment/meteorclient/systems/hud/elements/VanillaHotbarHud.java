@@ -5,7 +5,9 @@
 
 package meteordevelopment.meteorclient.systems.hud.elements;
 
+import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
+import meteordevelopment.meteorclient.settings.IntSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.hud.Hud;
@@ -25,13 +27,37 @@ public class VanillaHotbarHud extends HudElement {
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
+    private final Setting<Boolean> hide = sgGeneral.add(new BoolSetting.Builder()
+        .name("hide")
+        .description("Hides the real hotbar entirely instead of repositioning it - use this on the placed element to remove vanilla's own hotbar from a spot while still keeping this element for something else, or just to hide it outright.")
+        .defaultValue(false)
+        .build()
+    );
+
     private final Setting<Double> scale = sgGeneral.add(new DoubleSetting.Builder()
         .name("scale")
         .description("Size multiplier over vanilla's normal size.")
         .defaultValue(1.0)
         .min(0.1)
-        .sliderRange(0.1, 5)
+        .sliderRange(0.1, 20)
         .onChanged(v -> calculateSize())
+        .build()
+    );
+
+    private final Setting<Integer> rotation = sgGeneral.add(new IntSetting.Builder()
+        .name("rotation")
+        .description("Rotates the whole hotbar around its own center, in degrees clockwise.")
+        .defaultValue(0)
+        .range(0, 359)
+        .sliderRange(0, 359)
+        .build()
+    );
+
+    private final Setting<Boolean> keepItemsUpright = sgGeneral.add(new BoolSetting.Builder()
+        .name("keep-items-upright")
+        .description("Counter-rotates each item icon so they stay upright even while the hotbar itself is rotated - only the row layout rotates, not the icons themselves.")
+        .defaultValue(true)
+        .visible(() -> rotation.get() != 0)
         .build()
     );
 
@@ -46,6 +72,23 @@ public class VanillaHotbarHud extends HudElement {
 
     public double getScale() {
         return scale.get();
+    }
+
+    public int getRotation() {
+        return rotation.get();
+    }
+
+    @Override
+    public int getEditorRotation() {
+        return rotation.get();
+    }
+
+    public boolean keepItemsUpright() {
+        return keepItemsUpright.get();
+    }
+
+    public boolean isHidden() {
+        return hide.get();
     }
 
     @Override

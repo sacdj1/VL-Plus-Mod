@@ -17,6 +17,7 @@ import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.hud.HudElementInfo;
 import meteordevelopment.meteorclient.systems.hud.HudGroup;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.misc.VLPlusAdditions;
 import net.minecraft.client.gui.DrawContext;
 
 import java.util.ArrayList;
@@ -63,14 +64,20 @@ public class AddHudElementScreen extends WindowScreen {
         Hud hud = Hud.get();
         Map<HudGroup, List<Item>> grouped = new LinkedHashMap<>();
 
+        // Titles here are shown without their origin/experimental symbol prefixes (☄/✎/✚/⚠) - this
+        // list's window width was overflowing for longer names once those symbols got stacked on
+        // top, spilling text past the window's edge. The symbols stay everywhere else (the main
+        // module/HUD element lists) - this is purely a display/search choice for this one picker.
         for (HudElementInfo<?> info : hud.infos.values()) {
+            String baseTitle = VLPlusAdditions.stripOriginPrefix(info.title);
+
             if (info.hasPresets() && !searchBar.get().isEmpty()) {
                 for (HudElementInfo<?>.Preset preset : info.presets) {
-                    String title = info.title + "  -  " + preset.title;
+                    String title = baseTitle + "  -  " + preset.title;
                     if (Utils.searchTextDefault(title, searchBar.get(), false)) grouped.computeIfAbsent(info.group, hudGroup -> new ArrayList<>()).add(new Item(title, info.description, preset));
                 }
             }
-            else if (Utils.searchTextDefault(info.title, searchBar.get(), false)) grouped.computeIfAbsent(info.group, hudGroup -> new ArrayList<>()).add(new Item(info.title, info.description, info));
+            else if (Utils.searchTextDefault(baseTitle, searchBar.get(), false)) grouped.computeIfAbsent(info.group, hudGroup -> new ArrayList<>()).add(new Item(baseTitle, info.description, info));
         }
 
         // Elements opening a preset picker (the " > " button, e.g. Text) get their own extra

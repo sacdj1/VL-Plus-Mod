@@ -31,11 +31,11 @@ Requires [Fabric Loader](https://fabricmc.net/use/) for Minecraft 1.21.1. Drop t
 
 ## Bugs and Suggestions
 Bug reports and suggestions should go in this repo's [issue tracker](https://github.com/sacdj1/VL-Plus-Mod/issues).  
-Please include as much detail as you can (steps to reproduce, logs/crash reports if relevant) to help get it resolved faster.
+Please include as much detail as you can (steps to reproduce, logs/crash reports if relevant) to help get it resolved faster.  
+If you don't get a response here, reach out on [Discord](https://discord.gg/FNUFVxjcRS) instead.
 
 ## Credits
 Built on top of [Meteor Client](https://github.com/MeteorDevelopment/meteor-client) by [MeteorDevelopment](https://github.com/MeteorDevelopment) - the overwhelming majority of this mod's code, architecture, and features come directly from their work.  
-[Cabaletta](https://github.com/cabaletta) and [WagYourTail](https://github.com/wagyourtail) for [Baritone](https://github.com/cabaletta/baritone)  
 The [Fabric Team](https://github.com/FabricMC) for [Fabric](https://github.com/FabricMC/fabric-loader) and [Yarn](https://github.com/FabricMC/yarn)
 
 ## Licensing

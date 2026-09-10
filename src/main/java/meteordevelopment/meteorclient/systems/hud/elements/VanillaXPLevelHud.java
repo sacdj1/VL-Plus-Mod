@@ -17,13 +17,13 @@ import meteordevelopment.meteorclient.systems.hud.HudRenderer;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 
 /**
- * Doesn't draw anything itself - see VanillaHotbarHud. InGameHudMixin redirects vanilla's own
- * mount health row (shown while riding a horse/similar) to this element's position/scale. Only
- * visible in real gameplay while actually mounted - shows a placeholder box in the editor so it's
- * still positionable even when not currently riding anything.
+ * Doesn't draw anything itself - see VanillaHotbarHud. InGameHudMixin redirects vanilla's own XP
+ * level number (or XPLevelAdjust's own recolored/restyled draw, if that module is active) to this
+ * element's position/scale. Unlike the other Vanilla elements, top-left anchored here rather than
+ * staying centered - once you're relocating it at all, centering-on-screen no longer applies.
  */
-public class VanillaMountHealthHud extends HudElement {
-    public static final HudElementInfo<VanillaMountHealthHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-mount-health", "Moves and scales the real mount health row (shown while riding) - reported not working correctly, under investigation.", VanillaMountHealthHud::new);
+public class VanillaXPLevelHud extends HudElement {
+    public static final HudElementInfo<VanillaXPLevelHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-xp-level", "Moves and scales the real XP level number.", VanillaXPLevelHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -53,21 +53,13 @@ public class VanillaMountHealthHud extends HudElement {
         .build()
     );
 
-    private final Setting<Boolean> keepSpritesUpright = sgGeneral.add(new BoolSetting.Builder()
-        .name("keep-sprites-upright")
-        .description("Counter-rotates each individual icon so they stay upright even while this element itself is rotated - only the row layout rotates, not the icons themselves.")
-        .defaultValue(true)
-        .visible(() -> rotation.get() != 0)
-        .build()
-    );
-
-    public VanillaMountHealthHud() {
+    public VanillaXPLevelHud() {
         super(INFO);
         calculateSize();
     }
 
     private void calculateSize() {
-        setSize(81 * scale.get(), 9 * scale.get());
+        setSize(30 * scale.get(), 9 * scale.get());
     }
 
     public double getScale() {
@@ -85,10 +77,6 @@ public class VanillaMountHealthHud extends HudElement {
 
     public boolean isHidden() {
         return hide.get();
-    }
-
-    public boolean keepSpritesUpright() {
-        return keepSpritesUpright.get();
     }
 
     @Override

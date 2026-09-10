@@ -18,12 +18,13 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 
 /**
  * Doesn't draw anything itself - see VanillaHotbarHud. InGameHudMixin redirects vanilla's own
- * mount health row (shown while riding a horse/similar) to this element's position/scale. Only
- * visible in real gameplay while actually mounted - shows a placeholder box in the editor so it's
- * still positionable even when not currently riding anything.
+ * subtitle text to this element's position/scale, independently of VanillaTitleHud - vanilla draws
+ * the title and subtitle as two separate draw calls sharing one anchor point, so each gets its own
+ * relocatable element instead of always moving together as one rigid block. Center-anchored like
+ * VanillaTitleHud, for the same reason (subtitle width varies per message).
  */
-public class VanillaMountHealthHud extends HudElement {
-    public static final HudElementInfo<VanillaMountHealthHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-mount-health", "Moves and scales the real mount health row (shown while riding) - reported not working correctly, under investigation.", VanillaMountHealthHud::new);
+public class VanillaSubtitleHud extends HudElement {
+    public static final HudElementInfo<VanillaSubtitleHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-subtitle", "Moves and scales the real subtitle text (centered on this box, since subtitle text width varies), independently of Vanilla Title.", VanillaSubtitleHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -53,21 +54,13 @@ public class VanillaMountHealthHud extends HudElement {
         .build()
     );
 
-    private final Setting<Boolean> keepSpritesUpright = sgGeneral.add(new BoolSetting.Builder()
-        .name("keep-sprites-upright")
-        .description("Counter-rotates each individual icon so they stay upright even while this element itself is rotated - only the row layout rotates, not the icons themselves.")
-        .defaultValue(true)
-        .visible(() -> rotation.get() != 0)
-        .build()
-    );
-
-    public VanillaMountHealthHud() {
+    public VanillaSubtitleHud() {
         super(INFO);
         calculateSize();
     }
 
     private void calculateSize() {
-        setSize(81 * scale.get(), 9 * scale.get());
+        setSize(200 * scale.get(), 30 * scale.get());
     }
 
     public double getScale() {
@@ -87,12 +80,20 @@ public class VanillaMountHealthHud extends HudElement {
         return hide.get();
     }
 
-    public boolean keepSpritesUpright() {
-        return keepSpritesUpright.get();
-    }
-
     @Override
     public void render(HudRenderer renderer) {
-        if (isInEditor()) renderer.quad(x, y, getWidth(), getHeight(), new Color(255, 255, 255, 40));
+        if (!isInEditor()) return;
+
+        renderer.quad(x, y, getWidth(), getHeight(), new Color(255, 255, 255, 40));
+
+        // 2x is vanilla's own subtitle text scale - Scale above is a multiplier over that, same as
+        // everywhere else in this element, so the preview lines up with how big the real subtitle
+        // will actually be.
+        double textScale = scale.get() * 2;
+        String example = "Example Subtitle";
+        double centerX = x + getWidth() / 2.0;
+        double centerY = y + getHeight() / 2.0;
+
+        renderer.text(example, centerX - renderer.textWidth(example, true, textScale) / 2.0, centerY - renderer.textHeight(true, textScale) / 2.0, Color.WHITE, true, textScale);
     }
 }

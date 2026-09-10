@@ -44,7 +44,16 @@ public class XPLevelHud extends HudElement {
         DistinctColor
     }
 
+    public enum MaxColorMode {
+        Static,
+        Rainbow,
+        Gradient,
+        Flashing,
+        HueShift
+    }
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
+    private final SettingGroup sgVisibility = settings.createGroup("Visibility");
     private final SettingGroup sgRainbow = settings.createGroup("Rainbow");
     private final SettingGroup sgGradient = settings.createGroup("Gradient / Flashing");
     private final SettingGroup sgHueShift = settings.createGroup("Hue Shift");
@@ -84,6 +93,40 @@ public class XPLevelHud extends HudElement {
         .name("shadow")
         .description("Draws a drop shadow behind the text.")
         .defaultValue(true)
+        .build()
+    );
+
+    // Visibility
+
+    private final Setting<Boolean> hideBelow = sgVisibility.add(new BoolSetting.Builder()
+        .name("hide-below")
+        .description("Hides this element entirely while the number is below Hide Below Value - useful when a low value (e.g. CP repurposing this number) isn't meaningful to you. Still shows while positioning it in the HUD editor.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> hideBelowValue = sgVisibility.add(new IntSetting.Builder()
+        .name("hide-below-value")
+        .description("Threshold for Hide Below above - hidden while the number is strictly below this.")
+        .defaultValue(1)
+        .sliderRange(0, 200)
+        .visible(hideBelow::get)
+        .build()
+    );
+
+    private final Setting<Boolean> hideAbove = sgVisibility.add(new BoolSetting.Builder()
+        .name("hide-above")
+        .description("Hides this element entirely while the number is above Hide Above Value - useful once a high value stops being meaningful to you. Still shows while positioning it in the HUD editor.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> hideAboveValue = sgVisibility.add(new IntSetting.Builder()
+        .name("hide-above-value")
+        .description("Threshold for Hide Above above - hidden while the number is strictly above this.")
+        .defaultValue(200)
+        .sliderRange(0, 500)
+        .visible(hideAbove::get)
         .build()
     );
 
@@ -194,6 +237,24 @@ public class XPLevelHud extends HudElement {
         .build()
     );
 
+    private final Setting<Boolean> hideAfterDelay = sgZero.add(new BoolSetting.Builder()
+        .name("hide-after-delay")
+        .description("Hides this element after it's been at 0 for a while, regardless of which On Zero behavior above is chosen - e.g. combine with Custom Text to show a message at 0 for a bit, then hide entirely. No effect when On Zero is Hide, since that already hides immediately.")
+        .defaultValue(false)
+        .visible(() -> zeroBehavior.get() != ZeroBehavior.Hide)
+        .build()
+    );
+
+    private final Setting<Integer> zeroHideAfterTicks = sgZero.add(new IntSetting.Builder()
+        .name("zero-hide-after-ticks")
+        .description("How many game ticks the level must have been at 0 before this element hides.")
+        .defaultValue(40)
+        .min(1)
+        .sliderRange(1, 200)
+        .visible(() -> hideAfterDelay.get() && zeroBehavior.get() != ZeroBehavior.Hide)
+        .build()
+    );
+
     private final Setting<String> zeroText = sgZero.add(new StringSetting.Builder()
         .name("zero-text")
         .description("Text to show instead of \"0\" once the level reaches 0.")
@@ -238,11 +299,101 @@ public class XPLevelHud extends HudElement {
         .build()
     );
 
+    private final Setting<MaxColorMode> maxColorMode = sgMax.add(new EnumSetting.Builder<MaxColorMode>()
+        .name("max-color-mode")
+        .description("How the forced max-level color looks - same style choices as Color Mode above, but with their own independent settings below so the max look can differ from the normal one.")
+        .defaultValue(MaxColorMode.Static)
+        .visible(highlightMax::get)
+        .build()
+    );
+
     private final Setting<SettingColor> maxColor = sgMax.add(new ColorSetting.Builder()
         .name("max-color")
         .description("Color forced once the level is within Max Level Range of Max Level.")
         .defaultValue(new SettingColor(255, 215, 0))
-        .visible(highlightMax::get)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Static)
+        .build()
+    );
+
+    private final Setting<RainbowTransition> maxRainbowTransition = sgMax.add(new EnumSetting.Builder<RainbowTransition>()
+        .name("max-rainbow-transition")
+        .description("Soft smoothly cycles through every hue. Hard jumps between a fixed set of hues with no blending.")
+        .defaultValue(RainbowTransition.Soft)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Rainbow)
+        .build()
+    );
+
+    private final Setting<Integer> maxRainbowSteps = sgMax.add(new IntSetting.Builder()
+        .name("max-rainbow-hard-steps")
+        .description("How many distinct hues to jump between, in Hard mode.")
+        .defaultValue(6)
+        .min(2)
+        .sliderRange(2, 16)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Rainbow && maxRainbowTransition.get() == RainbowTransition.Hard)
+        .build()
+    );
+
+    private final Setting<Double> maxRainbowSpeed = sgMax.add(new DoubleSetting.Builder()
+        .name("max-rainbow-speed")
+        .description("How fast the rainbow cycles.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Rainbow)
+        .build()
+    );
+
+    private final Setting<List<SettingColor>> maxGradientColors = sgMax.add(new ColorListSetting.Builder()
+        .name("max-gradient-colors")
+        .description("The colors to cycle between. Needs at least 2.")
+        .defaultValue(List.of(new SettingColor(255, 215, 0), new SettingColor(255, 255, 255)))
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<Double> maxGradientSpeed = sgMax.add(new DoubleSetting.Builder()
+        .name("max-gradient-speed")
+        .description("How fast the gradient cycles.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<List<TimedColorEntry>> maxFlashColors = sgMax.add(new TimedColorListSetting.Builder()
+        .name("max-flash-colors")
+        .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
+        .defaultValue(List.of(new TimedColorEntry(new SettingColor(255, 215, 0), 10), new TimedColorEntry(new SettingColor(255, 255, 255), 10)))
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Flashing)
+        .build()
+    );
+
+    private final Setting<SettingColor> maxHueShiftBaseColor = sgMax.add(new ColorSetting.Builder()
+        .name("max-hue-shift-base-color")
+        .description("Starting color - its hue continuously rotates, keeping its saturation/brightness/alpha.")
+        .defaultValue(new SettingColor(255, 215, 0))
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> maxHueShiftSpeed = sgMax.add(new DoubleSetting.Builder()
+        .name("max-hue-shift-speed")
+        .description("How fast the hue rotates.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> maxHueShiftRange = sgMax.add(new DoubleSetting.Builder()
+        .name("max-hue-shift-range")
+        .description("How far the hue swings from the base color, in degrees each direction, instead of cycling continuously. 180 = swings the full way around.")
+        .defaultValue(30)
+        .range(0, 180)
+        .sliderRange(0, 180)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.HueShift)
         .build()
     );
 
@@ -262,6 +413,8 @@ public class XPLevelHud extends HudElement {
         .build()
     );
 
+    private long zeroSinceMs = -1;
+
     public XPLevelHud() {
         super(INFO);
 
@@ -276,23 +429,50 @@ public class XPLevelHud extends HudElement {
     public void render(HudRenderer renderer) {
         int level = mc.player != null ? mc.player.experienceLevel : 0;
         boolean atZero = level <= 0;
+        long now = System.currentTimeMillis();
+
+        if (atZero) {
+            if (zeroSinceMs == -1) zeroSinceMs = now;
+        } else {
+            zeroSinceMs = -1;
+        }
 
         if (atZero && zeroBehavior.get() == ZeroBehavior.Hide) return;
+
+        if (!isInEditor()) {
+            if (atZero && hideAfterDelay.get() && zeroBehavior.get() != ZeroBehavior.Hide && zeroSinceMs != -1 && now - zeroSinceMs >= zeroHideAfterTicks.get() * 50L) {
+                return;
+            }
+
+            if (hideBelow.get() && level < hideBelowValue.get()) return;
+            if (hideAbove.get() && level > hideAboveValue.get()) return;
+        }
 
         String text = atZero && zeroBehavior.get() == ZeroBehavior.CustomText ? zeroText.get() : String.valueOf(level);
         Color color = getColor(level, atZero);
 
         if (useCustomFont.get() && font.get() != null) {
+            setSize(CustomFontRenderer.width(font.get(), text, scale.get(), shadow.get()), CustomFontRenderer.height(font.get(), scale.get(), shadow.get()));
             CustomFontRenderer.render(font.get(), text, x, y, color, scale.get(), shadow.get());
         }
         else {
+            setSize(renderer.textWidth(text, scale.get()), renderer.textHeight(shadow.get(), scale.get()));
             renderer.text(text, x, y, color, shadow.get(), scale.get());
         }
     }
 
     private Color getColor(int level, boolean atZero) {
         if (atZero && zeroBehavior.get() == ZeroBehavior.DistinctColor) return zeroColor.get();
-        if (highlightMax.get() && level >= maxLevel.get() - maxLevelRange.get()) return maxColor.get();
+
+        if (highlightMax.get() && level >= maxLevel.get() - maxLevelRange.get()) {
+            return switch (maxColorMode.get()) {
+                case Static -> maxColor.get();
+                case Rainbow -> rainbowColor(maxRainbowTransition.get(), maxRainbowSteps.get(), maxRainbowSpeed.get());
+                case Gradient -> gradientColor(maxGradientColors.get(), maxGradientSpeed.get());
+                case Flashing -> flashColor(maxFlashColors.get());
+                case HueShift -> hueShiftColor(maxHueShiftBaseColor.get(), maxHueShiftSpeed.get(), maxHueShiftRange.get());
+            };
+        }
 
         return switch (colorMode.get()) {
             case Static -> staticColor.get();
@@ -327,11 +507,29 @@ public class XPLevelHud extends HudElement {
     }
 
     private Color getHueShiftColor() {
-        SettingColor base = hueShiftBaseColor.get();
+        return hueShiftColor(hueShiftBaseColor.get(), hueShiftSpeed.get(), hueShiftRange.get());
+    }
+
+    private Color getRainbowColor() {
+        return rainbowColor(rainbowTransition.get(), rainbowSteps.get(), rainbowSpeed.get());
+    }
+
+    private Color getGradientColor() {
+        return gradientColor(colors.get(), gradientSpeed.get());
+    }
+
+    private Color getFlashColor() {
+        return flashColor(flashColors.get());
+    }
+
+    // Parameterized so the Max Level highlight (see getColor()) can reuse the exact same math
+    // against its own independent settings, instead of duplicating each formula.
+
+    private Color hueShiftColor(SettingColor base, double speed, double range) {
         float[] hsb = java.awt.Color.RGBtoHSB(base.r, base.g, base.b, null);
 
-        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get();
-        double offset = Math.sin(time) * hueShiftRange.get();
+        double time = System.currentTimeMillis() / 1000.0 * speed;
+        double offset = Math.sin(time) * range;
         float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
 
         Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
@@ -339,14 +537,13 @@ public class XPLevelHud extends HudElement {
         return color;
     }
 
-    private Color getRainbowColor() {
-        double time = System.currentTimeMillis() / 1000.0 * rainbowSpeed.get() * 60.0;
+    private Color rainbowColor(RainbowTransition transition, int steps, double speed) {
+        double time = System.currentTimeMillis() / 1000.0 * speed * 60.0;
 
         float hue;
-        if (rainbowTransition.get() == RainbowTransition.Soft) {
+        if (transition == RainbowTransition.Soft) {
             hue = (float) (time % 360.0);
         } else {
-            int steps = rainbowSteps.get();
             int step = (int) (time / (360.0 / steps)) % steps;
             hue = step * (360f / steps);
         }
@@ -354,12 +551,11 @@ public class XPLevelHud extends HudElement {
         return Color.fromHsv(hue, 1, 1);
     }
 
-    private Color getGradientColor() {
-        List<SettingColor> list = colors.get();
+    private Color gradientColor(List<SettingColor> list, double speed) {
         if (list.isEmpty()) return Color.WHITE;
         if (list.size() == 1) return list.get(0);
 
-        double time = (System.currentTimeMillis() / 1000.0 * gradientSpeed.get()) % list.size();
+        double time = (System.currentTimeMillis() / 1000.0 * speed) % list.size();
         int index = (int) time;
         float t = (float) (time - index);
 
@@ -374,8 +570,7 @@ public class XPLevelHud extends HudElement {
         );
     }
 
-    private Color getFlashColor() {
-        List<TimedColorEntry> entries = flashColors.get();
+    private Color flashColor(List<TimedColorEntry> entries) {
         if (entries.isEmpty()) return Color.WHITE;
         if (entries.size() == 1) return entries.get(0).color;
 

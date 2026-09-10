@@ -9,8 +9,10 @@ import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.tabs.Tab;
 import meteordevelopment.meteorclient.gui.tabs.TabScreen;
 import meteordevelopment.meteorclient.gui.tabs.WindowTabScreen;
+import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.settings.Settings;
+import meteordevelopment.meteorclient.systems.Systems;
 import meteordevelopment.meteorclient.systems.config.Config;
 import meteordevelopment.meteorclient.utils.misc.NbtUtils;
 import meteordevelopment.meteorclient.utils.render.prompts.YesNoPrompt;
@@ -83,6 +85,24 @@ public class ConfigTab extends Tab {
 
             WButton credits = add(theme.button("Credits")).expandX().widget();
             credits.action = () -> Util.getOperatingSystem().open("https://github.com/MeteorDevelopment/meteor-client");
+
+            // Whole-config clipboard - every system (modules, HUD, macros, friends, accounts,
+            // waypoints, profiles, proxies, VL items) in one blob, distinct from this tab's own
+            // title-bar copy/paste above (toClipboard()/fromClipboard() below), which is scoped to
+            // just the Config system's own settings shown on this screen.
+            WHorizontalList wholeConfigList = add(theme.horizontalList()).expandX().widget();
+
+            WButton copyAll = wholeConfigList.add(theme.button("Copy All Settings")).expandX().widget();
+            copyAll.action = Systems::toClipboard;
+
+            WButton pasteAll = wholeConfigList.add(theme.button("Paste All Settings")).expandX().widget();
+            pasteAll.action = () -> YesNoPrompt.create(theme, this)
+                .title("Paste All Settings")
+                .message("This will overwrite EVERYTHING - all modules, HUD layout, macros, friends, accounts, waypoints, profiles, and proxies - with whatever's currently on your clipboard.")
+                .message("This cannot be undone. Continue?")
+                .onYes(Systems::fromClipboard)
+                .id("paste-all-settings")
+                .show();
         }
 
         @Override

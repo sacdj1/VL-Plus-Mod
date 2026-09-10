@@ -37,7 +37,11 @@ public class VLPlusAdditions {
         "particle-color",
         "xp-bar-adjust",
         "xp-level-adjust",
-        "noise-notif"
+        "noise-notif",
+        "item-info",
+        "health-bar-adjust",
+        "stamina-bar-adjust",
+        "gui-scale-adjust"
     );
 
     // Module ids (Module.name) that originate upstream but have been meaningfully modified/extended.
@@ -58,12 +62,26 @@ public class VLPlusAdditions {
         "vanilla-health",
         "vanilla-hunger",
         "vanilla-mount-health",
-        "vanilla-air"
+        "vanilla-air",
+        "vanilla-xp-bar",
+        "vanilla-xp-level",
+        "vanilla-title",
+        "vanilla-subtitle",
+        "vanilla-actionbar",
+        "vanilla-scoreboard",
+        "vanilla-item-name",
+        "hotbar-slot",
+        "held-item",
+        "chestplate-slot",
+        "leggings-slot",
+        "health-bar",
+        "stamina-bar"
     );
 
     // HudElementInfo ids (HudElementInfo.name) that originate upstream but have been modified.
     private static final Set<String> MODIFIED_HUD_ELEMENTS = Set.of(
-        "item"
+        "item",
+        "armor"
     );
 
     // HudElementInfo ids reported as not working correctly yet - shown with EXPERIMENTAL_SYMBOL
@@ -75,7 +93,13 @@ public class VLPlusAdditions {
         "vanilla-health",
         "vanilla-hunger",
         "vanilla-mount-health",
-        "vanilla-air"
+        "vanilla-air",
+        "vanilla-xp-bar",
+        "vanilla-xp-level",
+        "vanilla-title",
+        "vanilla-subtitle",
+        "vanilla-actionbar",
+        "vanilla-scoreboard"
     );
 
     private VLPlusAdditions() {
@@ -102,7 +126,7 @@ public class VLPlusAdditions {
     // origin symbol AND the experimental symbol at once (see refreshHudElementTitle), so a single
     // pass would only strip one of the two and the other would get baked into the "clean" title,
     // accumulating a new origin symbol on top of it every subsequent refreshAll() call.
-    private static String stripOriginPrefix(String title) {
+    public static String stripOriginPrefix(String title) {
         boolean strippedAny = true;
 
         while (strippedAny) {

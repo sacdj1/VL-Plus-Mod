@@ -89,6 +89,7 @@ public class Modules extends System<Modules> {
             get(Collisions.class).toggle();
             get(NoRender.class).toggle();
             get(HandView.class).toggle();
+            get(XPBarAdjust.class).toggle();
         }
     }
 
@@ -456,6 +457,7 @@ public class Modules extends System<Modules> {
         add(new HandView());
         add(new ItemPhysics());
         add(new ItemHighlight());
+        add(new ItemInfo());
         add(new NoRender());
         add(new TimeChanger());
         add(new TrueSight());
@@ -463,6 +465,9 @@ public class Modules extends System<Modules> {
         add(new ParticleColor());
         add(new XPBarAdjust());
         add(new XPLevelAdjust());
+        add(new HealthBarAdjust());
+        add(new StaminaBarAdjust());
+        add(new GuiScaleAdjust());
         add(new WaypointsModule());
         add(new Zoom());
     }

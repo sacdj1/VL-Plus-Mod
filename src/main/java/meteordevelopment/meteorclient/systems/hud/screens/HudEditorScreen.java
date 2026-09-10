@@ -240,10 +240,38 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
 
     private HudElement getHovered(int mouseX, int mouseY) {
         for (HudElement element : hud) {
-            if (mouseX >= element.x && mouseX <= element.x + element.getWidth() && mouseY >= element.y && mouseY <= element.y + element.getHeight()) return element;
+            if (isPointInElement(element, mouseX, mouseY)) return element;
         }
 
         return null;
+    }
+
+    // Plain axis-aligned test for the common (unrotated) case. At nonzero rotation, the mouse
+    // point is rotated the opposite way around the box's own center instead - equivalent to
+    // "undoing" the element's own rotation - then tested against the same axis-aligned box in that
+    // now-unrotated frame, so the hit-test box matches what's actually drawn instead of always
+    // staying axis-aligned regardless of how far the content itself is rotated.
+    private boolean isPointInElement(HudElement element, double mouseX, double mouseY) {
+        int rotation = element.getEditorRotation();
+        if (rotation == 0) {
+            return mouseX >= element.x && mouseX <= element.x + element.getWidth() && mouseY >= element.y && mouseY <= element.y + element.getHeight();
+        }
+
+        double halfWidth = element.getWidth() / 2.0;
+        double halfHeight = element.getHeight() / 2.0;
+        double centerX = element.x + halfWidth;
+        double centerY = element.y + halfHeight;
+
+        double rad = Math.toRadians(-rotation);
+        double cos = Math.cos(rad), sin = Math.sin(rad);
+
+        double dx = mouseX - centerX;
+        double dy = mouseY - centerY;
+
+        double localX = dx * cos - dy * sin;
+        double localY = dx * sin + dy * cos;
+
+        return localX >= -halfWidth && localX <= halfWidth && localY >= -halfHeight && localY <= halfHeight;
     }
 
     private void renderQuad(double x, double y, double w, double h, Color bgColor, Color olColor) {
@@ -255,8 +283,49 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
         Renderer2D.COLOR.quad(x + w - 1, y + 1, 1, h - 2, olColor);
     }
 
+    // Mirrors isPointInElement's inverse rotation - draws the box's 4 corners rotated forward by
+    // the element's own rotation, so the outline shown in the editor actually matches the rotated
+    // content instead of always staying axis-aligned like the hit-test used to.
+    //
+    // Outline only, no filled background - unlike renderQuad (still used as-is for the multi-select
+    // drag rectangle, which has nothing else drawn under it). Most elements draw real content of
+    // their own (icons, bars, text), so a second translucent fill on top read as a redundant
+    // "double box" stacked on the element's own background - the outline alone is enough to show
+    // hover/selected/inactive state without competing with what's actually being edited.
     private void renderElement(HudElement element, Color bgColor, Color olColor) {
-        renderQuad(element.x, element.y, element.getWidth(), element.getHeight(), bgColor, olColor);
+        int rotation = element.getEditorRotation();
+        if (rotation == 0) {
+            double x = element.x, y = element.y, w = element.getWidth(), h = element.getHeight();
+
+            Renderer2D.COLOR.quad(x, y, w, 1, olColor);
+            Renderer2D.COLOR.quad(x, y + h - 1, w, 1, olColor);
+            Renderer2D.COLOR.quad(x, y + 1, 1, h - 2, olColor);
+            Renderer2D.COLOR.quad(x + w - 1, y + 1, 1, h - 2, olColor);
+            return;
+        }
+
+        double halfWidth = element.getWidth() / 2.0;
+        double halfHeight = element.getHeight() / 2.0;
+        double centerX = element.x + halfWidth;
+        double centerY = element.y + halfHeight;
+
+        double rad = Math.toRadians(rotation);
+        double cos = Math.cos(rad), sin = Math.sin(rad);
+
+        double[] lx = {-halfWidth, -halfWidth, halfWidth, halfWidth};
+        double[] ly = {-halfHeight, halfHeight, halfHeight, -halfHeight};
+        double[] cx = new double[4];
+        double[] cy = new double[4];
+
+        for (int i = 0; i < 4; i++) {
+            cx[i] = centerX + lx[i] * cos - ly[i] * sin;
+            cy[i] = centerY + lx[i] * sin + ly[i] * cos;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            int next = (i + 1) % 4;
+            Renderer2D.COLOR.line(cx[i], cy[i], cx[next], cy[next], olColor);
+        }
     }
 
     @Override
@@ -291,10 +360,12 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
         for (HudElement element : hud) {
             element.updatePos();
 
-            if (inactiveOnly) {
-                if (!element.isActive()) element.render(HudRenderer.INSTANCE);
+            boolean shouldRender = inactiveOnly ? !element.isActive() : true;
+            if (shouldRender) {
+                HudRenderer.INSTANCE.setElementAlpha(element.alpha.get() / 255.0);
+                element.render(HudRenderer.INSTANCE);
+                HudRenderer.INSTANCE.setElementAlpha(1.0);
             }
-            else element.render(HudRenderer.INSTANCE);
         }
 
         HudRenderer.INSTANCE.end();

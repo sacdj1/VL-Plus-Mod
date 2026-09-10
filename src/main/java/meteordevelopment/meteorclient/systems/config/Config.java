@@ -114,7 +114,19 @@ public class Config extends System<Config> {
             // right before force-closing the game instead of a clean exit, which skips that hook
             // entirely. This setting specifically gets its own eager save so a force-close can't
             // lose it.
-            Config.get().save();
+            //
+            // Wrapped in try/catch: this runs synchronously on the render thread from the
+            // checkbox's own click handler, and System.save() needs to classload StreamUtils the
+            // first time it's called each session - if that races Fabric Loader's own known
+            // thread-safety bug (sporadic ZipException reading the mod jar concurrently with
+            // resource-pack loading), the uncaught exception used to crash the whole game right
+            // there, taking every OTHER unsaved system's settings down with it. Confirmed via a
+            // live crash report tracing this exact call chain.
+            try {
+                Config.get().save();
+            } catch (Throwable t) {
+                MeteorClient.LOG.error("Failed to eagerly save config after toggling show-origin-symbols.", t);
+            }
         })
         .build()
     );

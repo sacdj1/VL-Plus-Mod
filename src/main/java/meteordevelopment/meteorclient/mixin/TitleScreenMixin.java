@@ -71,13 +71,29 @@ public abstract class TitleScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void onInitAutoJoin(CallbackInfo ci) {
+        // Temporarily disabled: freezes the game partway through a session on this modpack -
+        // cause not yet found (not the reentrant setScreen issue this was already fixed for, see
+        // below - that connects fine, the hang happens later). Re-enable once root-caused.
+        if (true) return;
         if (autoJoinAttempted) return;
-        autoJoinAttempted = true;
 
+        // Config can still be null on the very first TitleScreen.init() if this fires before
+        // Systems finishes loading from disk - don't latch autoJoinAttempted in that case, or
+        // auto-join permanently no-ops for the rest of the session (reading the default "off"
+        // instead of the real saved value) despite never actually having checked the real setting.
         Config config = Config.get();
-        if (config == null || !config.autoJoinVentureland.get()) return;
+        if (config == null) return;
 
-        connectToVentureland();
+        autoJoinAttempted = true;
+        if (!config.autoJoinVentureland.get()) return;
+
+        // Deferred to next tick rather than called directly here: this fires at the TAIL of
+        // TitleScreen.init(), which itself is still running as part of the very
+        // MinecraftClient.setScreen(new TitleScreen()) call that's setting this screen in the
+        // first place. connectToVentureland() ends in mc.setScreen(...) too (via ConnectScreen) -
+        // calling that reentrantly, before the outer setScreen() call has even returned, was
+        // hanging the client on a black screen instead of showing the title screen or connecting.
+        this.client.execute(this::connectToVentureland);
     }
 
     // Connects using whatever the "mc.ventureland.net" entry is actually configured as in the

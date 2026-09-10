@@ -44,6 +44,13 @@ public class XPLevelAdjust extends Module {
         DistinctColor
     }
 
+    public enum OutlineColor {
+        None,
+        Black,
+        White,
+        Custom
+    }
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgRainbow = settings.createGroup("Rainbow");
     private final SettingGroup sgGradient = settings.createGroup("Gradient / Flashing");
@@ -83,6 +90,21 @@ public class XPLevelAdjust extends Module {
         .name("shadow")
         .description("Draws a drop shadow behind the number.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<OutlineColor> outline = sgGeneral.add(new EnumSetting.Builder<OutlineColor>()
+        .name("outline")
+        .description("Draws a solid outline around the number in the chosen color, same as vanilla's own default look (a thick black outline, keeping it readable against any background) - None disables it, leaving only the drop shadow above (if on).")
+        .defaultValue(OutlineColor.Black)
+        .build()
+    );
+
+    private final Setting<SettingColor> customOutlineColor = sgGeneral.add(new ColorSetting.Builder()
+        .name("custom-outline-color")
+        .description("Outline color, when Outline above is Custom.")
+        .defaultValue(new SettingColor(0, 0, 0))
+        .visible(() -> outline.get() == OutlineColor.Custom)
         .build()
     );
 
@@ -245,11 +267,29 @@ public class XPLevelAdjust extends Module {
         .build()
     );
 
+    private final Setting<Boolean> maxCustomTextEnabled = sgMax.add(new BoolSetting.Builder()
+        .name("max-custom-text")
+        .description("Replaces the number with custom text once the level is within Max Level Range of Max Level - independent of Highlight Max above, so you can use either or both together (e.g. show \"MAX\" in gold).")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<String> maxText = sgMax.add(new StringSetting.Builder()
+        .name("max-text")
+        .description("Text to show instead of the number, when Max Custom Text above is on.")
+        .defaultValue("MAX")
+        .visible(maxCustomTextEnabled::get)
+        .build()
+    );
+
     // Font
 
+    // Disabled (see InGameHudMixin.onRenderExperienceLevel) - CustomFontRenderer's immediate-mode
+    // GL draw call corrupts vanilla's batched rendering when run from a mixin hook mid vanilla HUD
+    // render, the same way it did for Item Info's badges - confirmed crashing the game here too.
     private final Setting<Boolean> useCustomFont = sgFont.add(new BoolSetting.Builder()
         .name("use-custom-font")
-        .description("Renders the number in its own chosen font, independent of the global Custom Font setting (or lack of one).")
+        .description("Currently disabled - was crashing the game. Renders the number in its own chosen font, independent of the global Custom Font setting (or lack of one).")
         .defaultValue(false)
         .build()
     );
@@ -270,7 +310,14 @@ public class XPLevelAdjust extends Module {
     }
 
     public String getText(int level) {
-        return level <= 0 && zeroBehavior.get() == ZeroBehavior.CustomText ? zeroText.get() : String.valueOf(level);
+        if (level <= 0 && zeroBehavior.get() == ZeroBehavior.CustomText) return zeroText.get();
+        if (maxCustomTextEnabled.get() && isAtMax(level)) return maxText.get();
+
+        return String.valueOf(level);
+    }
+
+    private boolean isAtMax(int level) {
+        return level >= maxLevel.get() - maxLevelRange.get();
     }
 
     public double getScale() {
@@ -281,8 +328,16 @@ public class XPLevelAdjust extends Module {
         return shadow.get();
     }
 
+    public OutlineColor getOutline() {
+        return outline.get();
+    }
+
+    public SettingColor getCustomOutlineColor() {
+        return customOutlineColor.get();
+    }
+
     public boolean useCustomFont() {
-        return useCustomFont.get() && font.get() != null;
+        return false; // see the field's own comment above
     }
 
     public FontFace getFont() {
@@ -293,7 +348,7 @@ public class XPLevelAdjust extends Module {
         boolean atZero = level <= 0;
 
         if (atZero && zeroBehavior.get() == ZeroBehavior.DistinctColor) return zeroColor.get();
-        if (highlightMax.get() && level >= maxLevel.get() - maxLevelRange.get()) return maxColor.get();
+        if (highlightMax.get() && isAtMax(level)) return maxColor.get();
 
         return switch (colorMode.get()) {
             case Static -> staticColor.get();

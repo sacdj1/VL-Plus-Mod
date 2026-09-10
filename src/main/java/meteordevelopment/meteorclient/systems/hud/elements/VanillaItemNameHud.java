@@ -18,12 +18,12 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 
 /**
  * Doesn't draw anything itself - see VanillaHotbarHud. InGameHudMixin redirects vanilla's own
- * mount health row (shown while riding a horse/similar) to this element's position/scale. Only
- * visible in real gameplay while actually mounted - shows a placeholder box in the editor so it's
- * still positionable even when not currently riding anything.
+ * "held item name" popup (the text that briefly shows the item's name above the hotbar when you
+ * switch to it) to this element's position/scale. Center-anchored like Title/Subtitle/Action Bar,
+ * since the text width varies per item name.
  */
-public class VanillaMountHealthHud extends HudElement {
-    public static final HudElementInfo<VanillaMountHealthHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-mount-health", "Moves and scales the real mount health row (shown while riding) - reported not working correctly, under investigation.", VanillaMountHealthHud::new);
+public class VanillaItemNameHud extends HudElement {
+    public static final HudElementInfo<VanillaItemNameHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-item-name", "Moves and scales the real held item name popup (centered on this box, since its width varies per item).", VanillaItemNameHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -53,21 +53,13 @@ public class VanillaMountHealthHud extends HudElement {
         .build()
     );
 
-    private final Setting<Boolean> keepSpritesUpright = sgGeneral.add(new BoolSetting.Builder()
-        .name("keep-sprites-upright")
-        .description("Counter-rotates each individual icon so they stay upright even while this element itself is rotated - only the row layout rotates, not the icons themselves.")
-        .defaultValue(true)
-        .visible(() -> rotation.get() != 0)
-        .build()
-    );
-
-    public VanillaMountHealthHud() {
+    public VanillaItemNameHud() {
         super(INFO);
         calculateSize();
     }
 
     private void calculateSize() {
-        setSize(81 * scale.get(), 9 * scale.get());
+        setSize(150 * scale.get(), 20 * scale.get());
     }
 
     public double getScale() {
@@ -87,12 +79,17 @@ public class VanillaMountHealthHud extends HudElement {
         return hide.get();
     }
 
-    public boolean keepSpritesUpright() {
-        return keepSpritesUpright.get();
-    }
-
     @Override
     public void render(HudRenderer renderer) {
-        if (isInEditor()) renderer.quad(x, y, getWidth(), getHeight(), new Color(255, 255, 255, 40));
+        if (!isInEditor()) return;
+
+        renderer.quad(x, y, getWidth(), getHeight(), new Color(255, 255, 255, 40));
+
+        double textScale = scale.get();
+        String example = "Example Item Name";
+        double centerX = x + getWidth() / 2.0;
+        double centerY = y + getHeight() / 2.0;
+
+        renderer.text(example, centerX - renderer.textWidth(example, true, textScale) / 2.0, centerY - renderer.textHeight(true, textScale) / 2.0, Color.WHITE, true, textScale);
     }
 }

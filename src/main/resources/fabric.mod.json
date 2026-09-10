@@ -3,7 +3,7 @@
   "name": "VL+",
   "id": "meteor-client",
   "version": "${version}",
-  "description": "VL+ utility mod.",
+  "description": "VL+ utility mod for Ventureland - a fork of Meteor Client.",
   "authors": [
     "sacdj"
   ],

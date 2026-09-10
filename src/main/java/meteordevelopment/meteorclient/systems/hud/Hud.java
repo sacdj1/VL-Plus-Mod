@@ -119,6 +119,12 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
 
         register(MeteorTextHud.INFO);
         register(ItemHud.INFO);
+        register(HotbarSlotHud.INFO);
+        register(HeldItemHud.INFO);
+        register(ChestplateSlotHud.INFO);
+        register(LeggingsSlotHud.INFO);
+        register(HealthBarHud.INFO);
+        register(StaminaBarHud.INFO);
         register(InventoryHud.INFO);
         register(CompassHud.INFO);
         register(ArmorHud.INFO);
@@ -139,6 +145,13 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(VanillaHungerHud.INFO);
         register(VanillaMountHealthHud.INFO);
         register(VanillaAirHud.INFO);
+        register(VanillaXPBarHud.INFO);
+        register(VanillaXPLevelHud.INFO);
+        register(VanillaTitleHud.INFO);
+        register(VanillaSubtitleHud.INFO);
+        register(VanillaActionBarHud.INFO);
+        register(VanillaScoreboardHud.INFO);
+        register(VanillaItemNameHud.INFO);
 
         // Default config
         if (isFirstInit) resetToDefaultElements();
@@ -271,7 +284,11 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         for (HudElement element : elements) {
             element.updatePos();
 
-            if (element.isActive()) element.render(HudRenderer.INSTANCE);
+            if (element.isActive()) {
+                HudRenderer.INSTANCE.setElementAlpha(element.alpha.get() / 255.0);
+                element.render(HudRenderer.INSTANCE);
+                HudRenderer.INSTANCE.setElementAlpha(1.0);
+            }
         }
 
         HudRenderer.INSTANCE.end();

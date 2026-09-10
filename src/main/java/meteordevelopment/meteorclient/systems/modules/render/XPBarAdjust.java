@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.systems.modules.render;
 
 import meteordevelopment.meteorclient.events.game.ResourcePacksReloadedEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
@@ -20,6 +21,8 @@ import net.minecraft.util.math.ColorHelper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
+
+import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
  * Recolors the vanilla XP bar itself - useful on servers that repurpose it to show an ability
@@ -95,7 +98,7 @@ public class XPBarAdjust extends Module {
     private final Setting<SurfaceColorMode> backgroundMode = sgGeneral.add(new EnumSetting.Builder<SurfaceColorMode>()
         .name("background-color-mode")
         .description("How the background/track picks its color. Fixed: Background Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown, with its own dedicated Background Color (...) settings below - separate from Ready Color and from Fill Color's own copies of the same settings.")
-        .defaultValue(SurfaceColorMode.Cooldown)
+        .defaultValue(SurfaceColorMode.Fixed)
         .visible(recolorBackground::get)
         .build()
     );
@@ -118,7 +121,7 @@ public class XPBarAdjust extends Module {
     private final Setting<SurfaceColorMode> fillMode = sgGeneral.add(new EnumSetting.Builder<SurfaceColorMode>()
         .name("fill-color-mode")
         .description("How the fill/progress part picks its color. Fixed: Fill Color below, unchanging. Cooldown: the ready/not-ready/mid/end gradient, reacting to cooldown state. Rainbow/Gradient/Flashing/HueShift: its own animated color, completely independent of cooldown, with its own dedicated Fill Color (...) settings below - separate from Ready Color and from Background Color's own copies of the same settings.")
-        .defaultValue(SurfaceColorMode.Fixed)
+        .defaultValue(SurfaceColorMode.Cooldown)
         .visible(recolorFill::get)
         .build()
     );
@@ -163,8 +166,25 @@ public class XPBarAdjust extends Module {
 
     private final Setting<Boolean> invertProgress = sgGeneral.add(new BoolSetting.Builder()
         .name("invert-progress")
-        .description("Flips which end of the bar counts as \"ready\". Affects both color and the rendered fill amount together: off, the bar drains from full down to empty as it becomes ready (matching the server's real experience value directly); on, it instead fills from empty up to full as it becomes ready.")
+        .description("Flips which direction the fill bar grows: off, it drains from full down to empty as the ability becomes ready (matching the server's real experience value directly); on, it instead fills from empty up to full as it becomes ready. Only affects the fill's direction/width - the Cooldown color mode's ready/not-ready color always reflects the real underlying progress regardless of this setting.")
         .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Boolean> autoHide = sgGeneral.add(new BoolSetting.Builder()
+        .name("auto-hide")
+        .description("Hides the whole bar (vanilla's own included) once it's been sitting ready for a while, instead of leaving it on screen indefinitely between cooldowns.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> autoHideDelay = sgGeneral.add(new IntSetting.Builder()
+        .name("auto-hide-delay")
+        .description("How many ticks the bar stays ready before Auto Hide hides it (20 ticks = 1 second).")
+        .defaultValue(20)
+        .min(0)
+        .sliderRange(0, 200)
+        .visible(autoHide::get)
         .build()
     );
 
@@ -481,6 +501,7 @@ public class XPBarAdjust extends Module {
 
     private float smoothedProgress = -1;
     private long lastSmoothNanos = -1;
+    private int readyTicks = 0;
 
     public XPBarAdjust() {
         super(Categories.Render, "xp-bar-adjust", "Recolors the vanilla XP bar - useful on servers that repurpose it for an ability cooldown.");
@@ -491,6 +512,23 @@ public class XPBarAdjust extends Module {
         invalidateGrayTextures();
         smoothedProgress = -1;
         lastSmoothNanos = -1;
+        readyTicks = 0;
+    }
+
+    @EventHandler
+    private void onTick(TickEvent.Post event) {
+        if (mc.player == null) {
+            readyTicks = 0;
+            return;
+        }
+
+        if (mc.player.experienceProgress <= 0.0001f) readyTicks++;
+        else readyTicks = 0;
+    }
+
+    /** True once Auto Hide is on and the bar has been ready for at least Auto Hide Delay ticks. */
+    public boolean shouldAutoHide() {
+        return autoHide.get() && readyTicks >= autoHideDelay.get();
     }
 
     /** The progress value to actually render this frame - the real value unchanged, or (with Smooth Fill on) an interpolated approach toward it. Advances the interpolation state, so call this at most once per frame. 0 = ready/empty, 1 = full/just applied - not yet run through Invert Progress. */
@@ -514,7 +552,12 @@ public class XPBarAdjust extends Module {
         return smoothedProgress;
     }
 
-    /** Fill width in bar-local pixels (0..183), from an already-smoothed render progress (see getRenderProgress) - applies Invert Progress the same way the Cooldown color mode does, so width and color always agree. */
+    /**
+     * Fill width in bar-local pixels (0..183), from an already-smoothed render progress (see
+     * getRenderProgress). Invert Progress only flips this - which visual direction the bar grows -
+     * not the Cooldown color mode's own ready/not-ready color (see getColor), since whether the
+     * ability is actually ready is a fact about game state, not a matter of which way the bar grows.
+     */
     public int getFillWidthPixels(float renderProgress) {
         return Math.round(applyInvert(renderProgress) * 183f);
     }
@@ -648,7 +691,7 @@ public class XPBarAdjust extends Module {
     public int getBackgroundOverlayArgb(float progress) {
         Color color = switch (backgroundMode.get()) {
             case Fixed -> backgroundColor.get();
-            case Cooldown -> getColor(applyInvert(progress));
+            case Cooldown -> getColor(progress);
             case Rainbow -> rainbowColor(backgroundRainbowTransition.get(), backgroundRainbowSteps.get(), backgroundRainbowSpeed.get());
             case Gradient -> gradientColor(backgroundGradientColors.get(), backgroundGradientSpeed.get());
             case Flashing -> flashColor(backgroundFlashColors.get(), backgroundColor.get());
@@ -662,7 +705,7 @@ public class XPBarAdjust extends Module {
     public int getFillOverlayArgb(float progress) {
         Color color = switch (fillMode.get()) {
             case Fixed -> fillColor.get();
-            case Cooldown -> getColor(applyInvert(progress));
+            case Cooldown -> getColor(progress);
             case Rainbow -> rainbowColor(fillRainbowTransition.get(), fillRainbowSteps.get(), fillRainbowSpeed.get());
             case Gradient -> gradientColor(fillGradientColors.get(), fillGradientSpeed.get());
             case Flashing -> flashColor(fillFlashColors.get(), fillColor.get());

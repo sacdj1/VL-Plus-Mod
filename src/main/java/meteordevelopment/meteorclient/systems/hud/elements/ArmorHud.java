@@ -58,6 +58,14 @@ public class ArmorHud extends HudElement {
         .build()
     );
 
+    private final Setting<Integer> spacing = sgGeneral.add(new IntSetting.Builder()
+        .name("spacing")
+        .description("Distance between each armor icon's top-left corner, before Scale is applied (18 is vanilla's own spacing, sized to exactly fit a 16px icon with no gap or overlap).")
+        .defaultValue(18)
+        .onChanged(integer -> calculateSize())
+        .build()
+    );
+
     // Durability
 
     private final Setting<Durability> durability = sgDurability.add(new EnumSetting.Builder<Durability>()
@@ -114,17 +122,26 @@ public class ArmorHud extends HudElement {
 
     private void calculateSize() {
         switch (orientation.get()) {
-            case Horizontal -> setSize(16 * scale.get() * 4 + 2 * 4, 16 * scale.get());
-            case Vertical -> setSize(16 * scale.get(), 16 * scale.get() * 4 + 2 * 4);
+            case Horizontal -> setSize((spacing.get() * 3 + 16) * scale.get(), 16 * scale.get());
+            case Vertical -> setSize(16 * scale.get(), (spacing.get() * 3 + 16) * scale.get());
         }
     }
 
     @Override
     public void render(HudRenderer renderer) {
-        double x = this.x;
-        double y = this.y;
+        if (background.get()) {
+            renderer.quad(this.x, this.y, getWidth(), getHeight(), backgroundColor.get());
+        }
+
+        double x = this.x + border.get();
+        double y = this.y + border.get();
         double armorX;
         double armorY;
+
+        // Bottom edge of the inset content area (box bottom minus the same border reserved at the
+        // top) - used below to bottom-align durability text within the padding, not flush against
+        // the outer (possibly bordered) box edge.
+        double contentBottom = this.y + getHeight() - border.get();
 
         int slot = flipOrder.get() ? 3 : 0;
         for (int position = 0; position < 4; position++) {
@@ -132,14 +149,23 @@ public class ArmorHud extends HudElement {
 
             if (orientation.get() == Orientation.Vertical) {
                 armorX = x;
-                armorY = y + position * 18 * scale.get();
+                armorY = y + position * spacing.get() * scale.get();
             }
             else {
-                armorX = x + position * 18 * scale.get();
+                armorX = x + position * spacing.get() * scale.get();
                 armorY = y;
             }
 
-            renderer.item(itemStack, (int) armorX, (int) armorY, scale.get().floatValue(), (itemStack.isDamageable() && durability.get() == Durability.Bar));
+            // overlay always true (not just when isDamageable() && Durability.Bar) - this is what
+            // actually invokes vanilla's DrawContext.drawItemInSlot underneath (see
+            // RenderUtils.drawItem), which Item Info hooks to draw its own badges/durability-bar
+            // override. Unbreakable gear (common on servers with their own custom durability/
+            // quality systems, like Quality%) reports isDamageable() == false, so the old
+            // Bar-mode-only gating silently skipped that call for exactly that gear - Item Info
+            // never got a chance to run. Vanilla's own damage bar still only actually draws when
+            // isItemBarVisible() is true (unaffected by this), so this doesn't introduce a
+            // duplicate bar for non-Bar durability modes.
+            renderer.item(itemStack, (int) armorX, (int) armorY, scale.get().floatValue(), true);
 
             if (itemStack.isDamageable() && !isInEditor() && durability.get() != Durability.Bar && durability.get() != Durability.None) {
                 String message = switch (durability.get()) {
@@ -152,10 +178,10 @@ public class ArmorHud extends HudElement {
 
                 if (orientation.get() == Orientation.Vertical) {
                     armorX = x + 8 * scale.get() - messageWidth / 2.0;
-                    armorY = y + (18 * position * scale.get()) + (18 * scale.get() - renderer.textHeight());
+                    armorY = y + (spacing.get() * position * scale.get()) + (spacing.get() * scale.get() - renderer.textHeight());
                 } else {
-                    armorX = x + 18 * position * scale.get() + 8 * scale.get() - messageWidth / 2.0;
-                    armorY = y + (getHeight() - renderer.textHeight());
+                    armorX = x + spacing.get() * position * scale.get() + 8 * scale.get() - messageWidth / 2.0;
+                    armorY = contentBottom - renderer.textHeight();
                 }
 
                 renderer.text(message, armorX, armorY, durabilityColor.get(), durabilityShadow.get());
@@ -163,10 +189,6 @@ public class ArmorHud extends HudElement {
 
             if (flipOrder.get()) slot--;
             else slot++;
-        }
-
-        if (background.get()) {
-            renderer.quad(this.x, this.y, getWidth(), getHeight(), backgroundColor.get());
         }
     }
 

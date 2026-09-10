@@ -7,6 +7,8 @@ package meteordevelopment.meteorclient.systems.hud;
 
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
+import meteordevelopment.meteorclient.settings.IntSetting;
+import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.Settings;
 import meteordevelopment.meteorclient.systems.hud.screens.HudEditorScreen;
 import meteordevelopment.meteorclient.utils.Utils;
@@ -20,6 +22,21 @@ public abstract class HudElement implements Snapper.Element, ISerializable<HudEl
 
     public final Settings settings = new Settings();
     public final HudBox box = new HudBox(this);
+
+    // Declared here (rather than per-element) so every HudElement gets it automatically - applied
+    // uniformly by HudRenderer around each element's own render() call (see Hud.onRender/
+    // HudEditorScreen.renderElements), covering quads/text/textures/items alike without each of the
+    // ~30 element subclasses needing its own copy. Vanilla* relocator elements (which redirect
+    // vanilla's own draw calls instead of drawing through HudRenderer) are NOT covered by this -
+    // see VanillaHudRotationState-style per-element alpha there instead, where present.
+    public final Setting<Integer> alpha = settings.getDefaultGroup().add(new IntSetting.Builder()
+        .name("alpha")
+        .description("Overall transparency of this element - 255 is fully opaque, 0 is invisible.")
+        .defaultValue(255)
+        .range(0, 255)
+        .sliderRange(0, 255)
+        .build()
+    );
 
     public boolean autoAnchors = true;
     public int x, y;
@@ -93,6 +110,18 @@ public abstract class HudElement implements Snapper.Element, ISerializable<HudEl
 
     protected boolean isInEditor() {
         return !Utils.canUpdate() || HudEditorScreen.isOpen();
+    }
+
+    /**
+     * Degrees clockwise the element's own rendered content is rotated by, around its box's own
+     * center - 0 for every element without a rotation concept. Purely informational for the editor
+     * (HudEditorScreen.getHovered()), which uses this to rotate its click/hover hit-test box to
+     * match the rotated visual instead of testing against an axis-aligned box that no longer lines
+     * up with what's actually drawn at nonzero rotation. Override wherever an element has its own
+     * "rotation" setting (see e.g. VanillaHotbarHud).
+     */
+    public int getEditorRotation() {
+        return 0;
     }
 
     public void remove() {
