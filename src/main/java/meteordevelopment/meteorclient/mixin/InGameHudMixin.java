@@ -801,7 +801,14 @@ public abstract class InGameHudMixin {
 
         if (adjust.isActive()) {
             float progress = client.player != null && client.player.getMaxHealth() > 0 ? client.player.getHealth() / client.player.getMaxHealth() : 1f;
-            Color tint = adjust.getFillColor(Color.WHITE, progress);
+            // CONTAINER is the always-drawn dark/empty heart outline every other heart layer draws
+            // on top of (Identifier path always contains "container" - hud/heart/container,
+            // container_blinking, container_hardcore, etc, see InGameHud.HeartType) - without this
+            // split, Background Color had no effect on real hearts at all (everything got Fill
+            // Color uniformly), and full/half/empty hearts all reading the same flat color made
+            // them hard to tell apart at a glance - the outline now carries its own color again.
+            boolean isContainer = texture.getPath().contains("container");
+            Color tint = isContainer ? adjust.getBackgroundColor(Color.WHITE, progress) : adjust.getFillColor(Color.WHITE, progress);
 
             Identifier grayTexture = GrayscaleSpriteCache.get(texture);
             ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredWholeTexture(grayTexture, x, y, 0, width, height, tint.r / 255f, tint.g / 255f, tint.b / 255f, effectiveAlpha);
@@ -826,7 +833,11 @@ public abstract class InGameHudMixin {
 
         if (adjust.isActive()) {
             float progress = client.player != null ? client.player.getHungerManager().getFoodLevel() / 20f : 1f;
-            Color tint = adjust.getFillColor(Color.WHITE, progress);
+            // The empty/backdrop food icon is always drawn first, every other layer on top of it -
+            // its Identifier path always contains "empty" (hud/food_empty, food_empty_hunger) - see
+            // redirectDrawHeartColor's own container check above for why this split matters.
+            boolean isEmpty = texture.getPath().contains("empty");
+            Color tint = isEmpty ? adjust.getBackgroundColor(Color.WHITE, progress) : adjust.getFillColor(Color.WHITE, progress);
 
             Identifier grayTexture = GrayscaleSpriteCache.get(texture);
             ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredWholeTexture(grayTexture, x, y, 0, width, height, tint.r / 255f, tint.g / 255f, tint.b / 255f, effectiveAlpha);

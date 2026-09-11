@@ -106,14 +106,24 @@ public class HealthBarAdjust extends Module {
 
     private final Setting<Boolean> maxHealthColorEnabled = sgSpecialColors.add(new BoolSetting.Builder()
         .name("max-health-color")
-        .description("Uses a distinct color whenever health is exactly full, overriding Fill Mode above at that moment only.")
+        .description("Uses a distinct color whenever health is at/above the threshold below, overriding Fill Mode above at that point.")
         .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> maxHealthThreshold = sgSpecialColors.add(new IntSetting.Builder()
+        .name("max-health-threshold")
+        .description("Health percent at/above which the max-health color applies. 100 = only exactly full, same as before this was adjustable - lower it to trigger a bit before completely full.")
+        .defaultValue(100)
+        .range(1, 100)
+        .sliderRange(1, 100)
+        .visible(maxHealthColorEnabled::get)
         .build()
     );
 
     private final Setting<SettingColor> maxHealthColor = sgSpecialColors.add(new ColorSetting.Builder()
         .name("max-health-color-value")
-        .description("Color used while health is full, when Max Health Color above is on.")
+        .description("Color used while health is at/above the threshold, when Max Health Color above is on.")
         .defaultValue(new SettingColor(255, 215, 0))
         .visible(maxHealthColorEnabled::get)
         .build()
@@ -412,7 +422,7 @@ public class HealthBarAdjust extends Module {
 
     /** progress: current/max health, 0-1 - used for the Max/Low health color overrides below (hard cutoffs), which take priority over Fill Mode, and for By Value mode (a smooth blend across the whole range instead). */
     public Color getFillColor(Color fallback, float progress) {
-        if (maxHealthColorEnabled.get() && progress >= 0.999f) return maxHealthColor.get();
+        if (maxHealthColorEnabled.get() && progress >= maxHealthThreshold.get() / 100.0) return maxHealthColor.get();
 
         if (lowHealthMode.get() == LowHealthMode.Permanent && progress <= lowHealthThreshold.get() / 100.0) return lowHealthColor.get();
         if (lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowFlashTicksRemaining > 0) return lowHealthColor.get();

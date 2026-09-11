@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.systems.modules.render;
 
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
@@ -98,5 +99,22 @@ public class GuiScaleAdjust extends Module {
         } else {
             revert();
         }
+    }
+
+    // Safety net on top of the event hook above: re-checks reality every tick and self-corrects,
+    // so a single missed/misordered OpenScreenEvent (any mod's screen swapping itself out during
+    // its own init, any future case neither of us has hit yet) can't leave the override permanently
+    // stuck either way - within one tick it always matches whether a HandledScreen is actually the
+    // current screen, regardless of how it got out of sync.
+    @EventHandler
+    private void onTick(TickEvent.Post event) {
+        if (!isActive()) {
+            if (overridden) revert();
+            return;
+        }
+
+        boolean shouldBeOverridden = mc.currentScreen instanceof HandledScreen;
+        if (shouldBeOverridden && !overridden) apply();
+        else if (!shouldBeOverridden && overridden) revert();
     }
 }
