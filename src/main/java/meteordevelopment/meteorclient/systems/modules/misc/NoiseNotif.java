@@ -117,6 +117,35 @@ public class NoiseNotif extends Module {
         .build()
     );
 
+    // General (ability used) - the opposite moment from ability-ready above: the instant the XP
+    // bar jumps back UP from ready, meaning the ability was actually triggered/consumed. Registered
+    // sounds only for now, unlike the ready sound's custom-file option - that needs its own
+    // SoundLoaderMixin slot (see VLSounds.CUSTOM_ALERT), not added yet.
+
+    private final Setting<Boolean> abilityUsedEnabled = sgGeneral.add(new BoolSetting.Builder()
+        .name("ability-used-enabled")
+        .description("Plays a sound the instant your ability is actually used (the XP bar jumps back up from ready), separate from the ready sound above.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<List<SoundEvent>> usedSound = sgGeneral.add(new SoundEventListSetting.Builder()
+        .name("used-sound")
+        .description("Which sound to play when your ability is used. Only the first sound picked here is used.")
+        .defaultValue(List.of(SoundEvents.ENTITY_ARROW_SHOOT))
+        .visible(abilityUsedEnabled::get)
+        .build()
+    );
+
+    private final Setting<Void> testUsedSound = sgGeneral.add(new ButtonSetting.Builder()
+        .name("test-used-sound")
+        .description("Plays the currently configured ability-used sound once, at the pitch/volume settings above.")
+        .buttonText("Test Used Sound")
+        .action(this::playUsedSound)
+        .visible(abilityUsedEnabled::get)
+        .build()
+    );
+
     private final Setting<Double> volume = sgVolume.add(new DoubleSetting.Builder()
         .name("volume")
         .description("Volume multiplier for every sound this module plays (ability-ready and Reader Notif's Sound channel alike), on top of your normal Master Volume slider. 100% plays at the sound's own normal volume.")
@@ -216,12 +245,15 @@ public class NoiseNotif extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (!abilityReadyEnabled.get() || mc.player == null) return;
+        if (mc.player == null) return;
 
         float progress = mc.player.experienceProgress;
 
         // 0 = ready, matching AbilityCooldownHud/XPBarAdjust's convention on this server.
-        if (lastProgress > 0.001f && progress <= 0.001f) playReadySound();
+        if (abilityReadyEnabled.get() && lastProgress > 0.001f && progress <= 0.001f) playReadySound();
+
+        // Opposite edge: bar jumps back up from ready = the ability was just used.
+        if (abilityUsedEnabled.get() && lastProgress != -1 && lastProgress <= 0.001f && progress > 0.001f) playUsedSound();
 
         lastProgress = progress;
     }
@@ -322,6 +354,11 @@ public class NoiseNotif extends Module {
 
     private void playReadySound() {
         SoundEvent soundEvent = notificationSound();
+        if (soundEvent != null) playSound(soundEvent);
+    }
+
+    private void playUsedSound() {
+        SoundEvent soundEvent = usedSound.get().isEmpty() ? null : usedSound.get().get(0);
         if (soundEvent != null) playSound(soundEvent);
     }
 

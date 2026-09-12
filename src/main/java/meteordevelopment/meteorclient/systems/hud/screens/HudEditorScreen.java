@@ -283,49 +283,21 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
         Renderer2D.COLOR.quad(x + w - 1, y + 1, 1, h - 2, olColor);
     }
 
-    // Mirrors isPointInElement's inverse rotation - draws the box's 4 corners rotated forward by
-    // the element's own rotation, so the outline shown in the editor actually matches the rotated
-    // content instead of always staying axis-aligned like the hit-test used to.
-    //
-    // Outline only, no filled background - unlike renderQuad (still used as-is for the multi-select
-    // drag rectangle, which has nothing else drawn under it). Most elements draw real content of
-    // their own (icons, bars, text), so a second translucent fill on top read as a redundant
-    // "double box" stacked on the element's own background - the outline alone is enough to show
-    // hover/selected/inactive state without competing with what's actually being edited.
+    // Tried a full outline matching the element's own (possibly rotated) bounds - still read as a
+    // confusing second box stacked on top of elements that draw their own real content (icons,
+    // bars, text), especially anything center-anchored where the box itself is just a placeholder
+    // region wider than what's actually drawn (Title/Subtitle/Action Bar and friends). Simplified
+    // to a small fixed-size marker at the element's own center instead - always unambiguous about
+    // "here's the element", never competing with or obscuring its actual rendered content, and no
+    // rotation math needed since a small square looks the same regardless of angle.
+    private static final double MARKER_SIZE = 10;
+
     private void renderElement(HudElement element, Color bgColor, Color olColor) {
-        int rotation = element.getEditorRotation();
-        if (rotation == 0) {
-            double x = element.x, y = element.y, w = element.getWidth(), h = element.getHeight();
+        double centerX = element.x + element.getWidth() / 2.0;
+        double centerY = element.y + element.getHeight() / 2.0;
+        double half = MARKER_SIZE / 2.0;
 
-            Renderer2D.COLOR.quad(x, y, w, 1, olColor);
-            Renderer2D.COLOR.quad(x, y + h - 1, w, 1, olColor);
-            Renderer2D.COLOR.quad(x, y + 1, 1, h - 2, olColor);
-            Renderer2D.COLOR.quad(x + w - 1, y + 1, 1, h - 2, olColor);
-            return;
-        }
-
-        double halfWidth = element.getWidth() / 2.0;
-        double halfHeight = element.getHeight() / 2.0;
-        double centerX = element.x + halfWidth;
-        double centerY = element.y + halfHeight;
-
-        double rad = Math.toRadians(rotation);
-        double cos = Math.cos(rad), sin = Math.sin(rad);
-
-        double[] lx = {-halfWidth, -halfWidth, halfWidth, halfWidth};
-        double[] ly = {-halfHeight, halfHeight, halfHeight, -halfHeight};
-        double[] cx = new double[4];
-        double[] cy = new double[4];
-
-        for (int i = 0; i < 4; i++) {
-            cx[i] = centerX + lx[i] * cos - ly[i] * sin;
-            cy[i] = centerY + lx[i] * sin + ly[i] * cos;
-        }
-
-        for (int i = 0; i < 4; i++) {
-            int next = (i + 1) % 4;
-            Renderer2D.COLOR.line(cx[i], cy[i], cx[next], cy[next], olColor);
-        }
+        renderQuad(centerX - half, centerY - half, MARKER_SIZE, MARKER_SIZE, bgColor, olColor);
     }
 
     @Override

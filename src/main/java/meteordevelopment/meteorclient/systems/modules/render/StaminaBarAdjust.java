@@ -131,18 +131,18 @@ public class StaminaBarAdjust extends Module {
 
     private final Setting<LowHealthMode> lowHealthMode = sgSpecialColors.add(new EnumSetting.Builder<LowHealthMode>()
         .name("low-hunger-mode")
-        .description("Off: no low-hunger color. Permanent: stays the low-hunger color the whole time hunger is at or below the threshold. Flash When Reached: briefly flashes the low-hunger color only at the moment hunger first drops to/below the threshold, then goes back to normal even if it stays low - like vanilla's own hunger shake, but a one-shot flash instead of a repeating one.")
+        .description("Off: no low-hunger color. Permanent: always uses the low-hunger color, no threshold - a plain fixed override, always on. Flash When Reached: briefly flashes the low-hunger color only at the moment hunger first drops to/below the threshold below, then goes back to normal even if it stays low - like vanilla's own hunger shake, but a one-shot flash instead of a repeating one.")
         .defaultValue(LowHealthMode.Off)
         .build()
     );
 
     private final Setting<Integer> lowHealthThreshold = sgSpecialColors.add(new IntSetting.Builder()
         .name("low-hunger-threshold")
-        .description("Hunger percent at/below which the low-hunger color applies (vanilla's own hunger shake kicks in at 3 legs of meat = 6/20 = 30% - this defaults to match that exactly).")
+        .description("Hunger percent at/below which the low-hunger color flashes (vanilla's own hunger shake kicks in at 3 legs of meat = 6/20 = 30% - this defaults to match that exactly). Only used by Flash When Reached - Permanent has no threshold, it's just always on.")
         .defaultValue(30)
         .range(0, 100)
         .sliderRange(0, 100)
-        .visible(() -> lowHealthMode.get() != LowHealthMode.Off)
+        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached)
         .build()
     );
 
@@ -424,7 +424,7 @@ public class StaminaBarAdjust extends Module {
     public Color getFillColor(Color fallback, float progress) {
         if (maxHealthColorEnabled.get() && progress >= maxHealthThreshold.get() / 100.0) return maxHealthColor.get();
 
-        if (lowHealthMode.get() == LowHealthMode.Permanent && progress <= lowHealthThreshold.get() / 100.0) return lowHealthColor.get();
+        if (lowHealthMode.get() == LowHealthMode.Permanent) return lowHealthColor.get();
         if (lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowFlashTicksRemaining > 0) return lowHealthColor.get();
 
         return switch (fillMode.get()) {

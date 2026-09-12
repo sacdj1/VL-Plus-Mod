@@ -7,6 +7,7 @@ package meteordevelopment.meteorclient.systems.modules.render;
 
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.DoubleSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
@@ -18,73 +19,133 @@ import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 /**
- * Overrides the window's real scale factor (Window.setScaleFactor takes a double, unlike the
- * integer-only vanilla GUI Scale option) while an inventory-type (HandledScreen) screen is open -
- * chests, crafting tables, your own inventory, etc - then reverts to whatever the real GUI Scale
- * option computes via MinecraftClient.onResolutionChanged() the moment that screen closes or a
- * different (non-inventory) screen replaces it. Already supports fractional values today (e.g.
- * 3.5), not just Minecraft's own whole-number steps - "smoother values" was the plan for later,
- * but Window.setScaleFactor already takes a double, so there's nothing coarser to build around.
- * Currently one shared scale for every inventory-type screen - a per-screen-type list is possible
- * later if that's wanted, but "mostly for inv size" is the one case that matters right now.
+ * Two independent mechanisms, since they need different techniques:
+ *
+ * Inventory/Other Screens Scale override the window's real scale factor (Window.setScaleFactor
+ * takes a double, unlike the integer-only vanilla GUI Scale option) while the corresponding kind
+ * of screen is open, reverting to whatever the real GUI Scale option computes the moment it
+ * closes. Only one of these (or neither) is ever in effect at once, tracked by currentTarget so
+ * sync() only touches the real scale factor when the desired target actually changed - not on
+ * every single screen transition regardless.
+ *
+ * Tab List Scale instead wraps the tab list's own render call in a plain matrix scale (see
+ * InGameHudMixin's onRenderPlayerList hooks) - the tab list isn't a Screen at all (it's a HUD
+ * overlay shown by holding a key, independent of screen state), so it was never covered by the
+ * window-scale-factor mechanism above regardless of whether that was active.
  */
 public class GuiScaleAdjust extends Module {
+    private enum ScaleTarget {
+        None,
+        Inventory,
+        OtherScreen
+    }
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
-    private final Setting<Double> inventoryScale = sgGeneral.add(new DoubleSetting.Builder()
-        .name("inventory-scale")
-        .description("Scale factor used while an inventory-type screen (chest, crafting table, your own inventory, etc) is open. Fractional values work, unlike vanilla's own GUI Scale option.")
-        .defaultValue(2)
-        .min(0.5)
-        .sliderRange(0.5, 10)
-        .onChanged(v -> reapplyIfInventoryOpen())
+    private final Setting<Boolean> inventoryScaleEnabled = sgGeneral.add(new BoolSetting.Builder()
+        .name("inventory-scale-enabled")
+        .description("Overrides the GUI scale while an inventory-type screen (chest, crafting table, your own inventory, etc) is open.")
+        .defaultValue(true)
         .build()
     );
 
-    // overridden tracks whether OUR scale override is currently the one in effect, so revert()
-    // only ever calls onResolutionChanged() when there's actually something to undo - not on every
-    // single non-inventory screen open regardless. applying guards against reentrancy:
-    // onResolutionChanged() notifies the current screen of a "resize", and at least one other mod's
-    // screen (confirmed live: Sodium's options GUI) reacts to that by calling setScreen() again,
-    // which re-fires OpenScreenEvent and would otherwise call back into this same method - infinite
-    // recursion (StackOverflowError, crashed the game). Being already inside apply()/revert() short-
-    // circuits that immediately instead.
-    private boolean overridden = false;
+    private final Setting<Double> inventoryScale = sgGeneral.add(new DoubleSetting.Builder()
+        .name("inventory-scale")
+        .description("Scale factor used while an inventory-type screen is open. Fractional values work, unlike vanilla's own GUI Scale option.")
+        .defaultValue(2)
+        .min(0.5)
+        .sliderRange(0.5, 10)
+        .visible(inventoryScaleEnabled::get)
+        .onChanged(v -> sync())
+        .build()
+    );
+
+    private final Setting<Boolean> otherScreensScaleEnabled = sgGeneral.add(new BoolSetting.Builder()
+        .name("other-screens-scale-enabled")
+        .description("Overrides the GUI scale while any OTHER (non-inventory) screen is open - pause menu, mod menus, etc.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Double> otherScreensScale = sgGeneral.add(new DoubleSetting.Builder()
+        .name("other-screens-scale")
+        .description("Scale factor used while a non-inventory screen is open, when Other Screens Scale Enabled above is on.")
+        .defaultValue(2)
+        .min(0.5)
+        .sliderRange(0.5, 10)
+        .visible(otherScreensScaleEnabled::get)
+        .onChanged(v -> sync())
+        .build()
+    );
+
+    private final Setting<Boolean> tabListScaleEnabled = sgGeneral.add(new BoolSetting.Builder()
+        .name("tab-list-scale-enabled")
+        .description("Scales the real tab list (holding the player list key) independently of the GUI scale settings above - it's a HUD overlay, not a screen, so it needs its own separate control.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Double> tabListScale = sgGeneral.add(new DoubleSetting.Builder()
+        .name("tab-list-scale")
+        .description("Scale multiplier for the tab list, when Tab List Scale Enabled above is on.")
+        .defaultValue(1.5)
+        .min(0.1)
+        .sliderRange(0.1, 5)
+        .visible(tabListScaleEnabled::get)
+        .build()
+    );
+
+    // currentTarget tracks which override (if any) is actually in effect right now, so sync()
+    // only touches the real window scale factor when the desired target changed - not on every
+    // single screen transition regardless. applying guards against reentrancy: onResolutionChanged()
+    // notifies the current screen of a "resize", and at least one other mod's screen (confirmed
+    // live: Sodium's options GUI) reacts to that by calling setScreen() again, which re-fires
+    // OpenScreenEvent and would otherwise call back into this same method - infinite recursion
+    // (StackOverflowError, crashed the game). Being already inside sync() short-circuits that
+    // immediately instead.
+    private ScaleTarget currentTarget = ScaleTarget.None;
     private boolean applying = false;
 
     public GuiScaleAdjust() {
-        super(Categories.Render, "gui-scale-adjust", "Overrides the GUI scale while an inventory-type screen is open, independent of your normal GUI Scale option.");
+        super(Categories.Render, "gui-scale-adjust", "Overrides the GUI scale per kind of screen (inventory vs everything else), plus a separate scale for the tab list overlay.");
     }
 
     @Override
     public void onDeactivate() {
-        revert();
+        sync();
     }
 
-    private void reapplyIfInventoryOpen() {
-        if (isActive() && mc.currentScreen instanceof HandledScreen) apply();
+    public double getTabListScale() {
+        return tabListScaleEnabled.get() ? tabListScale.get() : 1.0;
     }
 
-    private void apply() {
+    private ScaleTarget desiredTarget() {
+        if (!isActive()) return ScaleTarget.None;
+        if (inventoryScaleEnabled.get() && mc.currentScreen instanceof HandledScreen) return ScaleTarget.Inventory;
+        if (otherScreensScaleEnabled.get() && mc.currentScreen != null) return ScaleTarget.OtherScreen;
+        return ScaleTarget.None;
+    }
+
+    private void sync() {
         if (applying) return;
+
+        ScaleTarget desired = desiredTarget();
+        if (desired == currentTarget) return;
+
         applying = true;
-
         try {
-            mc.getWindow().setScaleFactor(inventoryScale.get());
-            mc.mouse.onResolutionChanged();
-            overridden = true;
-        } finally {
-            applying = false;
-        }
-    }
-
-    private void revert() {
-        if (!overridden || applying) return;
-        applying = true;
-
-        try {
-            mc.onResolutionChanged();
-            overridden = false;
+            switch (desired) {
+                case Inventory -> {
+                    mc.getWindow().setScaleFactor(inventoryScale.get());
+                    mc.mouse.onResolutionChanged();
+                }
+                case OtherScreen -> {
+                    mc.getWindow().setScaleFactor(otherScreensScale.get());
+                    mc.mouse.onResolutionChanged();
+                }
+                case None -> mc.onResolutionChanged();
+            }
+            currentTarget = desired;
         } finally {
             applying = false;
         }
@@ -92,29 +153,14 @@ public class GuiScaleAdjust extends Module {
 
     @EventHandler
     private void onOpenScreen(OpenScreenEvent event) {
-        if (!isActive()) return;
-
-        if (event.screen instanceof HandledScreen) {
-            apply();
-        } else {
-            revert();
-        }
+        sync();
     }
 
     // Safety net on top of the event hook above: re-checks reality every tick and self-corrects,
-    // so a single missed/misordered OpenScreenEvent (any mod's screen swapping itself out during
-    // its own init, any future case neither of us has hit yet) can't leave the override permanently
-    // stuck either way - within one tick it always matches whether a HandledScreen is actually the
-    // current screen, regardless of how it got out of sync.
+    // so a single missed/misordered OpenScreenEvent can't leave the override permanently stuck out
+    // of sync either way - within one tick it always matches whatever screen is actually current.
     @EventHandler
     private void onTick(TickEvent.Post event) {
-        if (!isActive()) {
-            if (overridden) revert();
-            return;
-        }
-
-        boolean shouldBeOverridden = mc.currentScreen instanceof HandledScreen;
-        if (shouldBeOverridden && !overridden) apply();
-        else if (!shouldBeOverridden && overridden) revert();
+        sync();
     }
 }

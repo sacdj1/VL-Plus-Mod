@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.events.render.RenderTitleEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.misc.BetterChat;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
+import meteordevelopment.meteorclient.systems.modules.render.GuiScaleAdjust;
 import meteordevelopment.meteorclient.systems.modules.render.HealthBarAdjust;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.render.StaminaBarAdjust;
@@ -1078,6 +1079,36 @@ public abstract class InGameHudMixin {
     private void onRenderMountHealthTail(DrawContext context, CallbackInfo ci) {
         popVanillaTransform(context);
         VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
+    }
+
+    // GuiScaleAdjust's Tab List Scale: the tab list isn't a Screen (shown by holding a key,
+    // independent of screen state), so it's never covered by that module's window-scale-factor
+    // mechanism - scaled directly here instead, around the screen's own center, matching how the
+    // tab list's own internal layout already centers itself.
+    private boolean tabListScalePushed = false;
+
+    @Inject(method = "renderPlayerList", at = @At("HEAD"))
+    private void onRenderPlayerListHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        double scale = Modules.get().get(GuiScaleAdjust.class).getTabListScale();
+        if (scale == 1.0) return;
+
+        double centerX = context.getScaledWindowWidth() / 2.0;
+        double centerY = context.getScaledWindowHeight() / 2.0;
+
+        MatrixStack matrices = context.getMatrices();
+        matrices.push();
+        matrices.translate(centerX, centerY, 0);
+        matrices.scale((float) scale, (float) scale, 1f);
+        matrices.translate(-centerX, -centerY, 0);
+        tabListScalePushed = true;
+    }
+
+    @Inject(method = "renderPlayerList", at = @At("TAIL"))
+    private void onRenderPlayerListTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        if (tabListScalePushed) {
+            context.getMatrices().pop();
+            tabListScalePushed = false;
+        }
     }
 
     // Air bubbles: vanilla draws these inline inside renderStatusBars with no separate callable
