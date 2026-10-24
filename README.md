@@ -15,7 +15,14 @@
 
 ## About
 
-VL+ is a fork of [Meteor Client](https://github.com/MeteorDevelopment/meteor-client) - a Fabric utility mod - customized specifically for the Ventureland server. It keeps the vast majority of Meteor's own modules and features, and adds a curated set of Ventureland-specific modules, HUD elements, and quality-of-life changes on top (XP bar/level recoloring, alert rules with per-rule sounds, Discord Rich Presence tuned for the server, relocatable vanilla HUD pieces, and more).
+VL+ is a fork of [Meteor Client](https://github.com/MeteorDevelopment/meteor-client) - a Fabric utility mod - customized specifically for the Ventureland server. It keeps the vast majority of Meteor's own modules and features, and adds a large, growing set of Ventureland-specific modules, HUD elements, and quality-of-life changes on top, including:
+
+- An ambience/world-coloring system (sky, clouds, lightning, lava, and individual blocks) with per-region, per-biome, and per-season color overrides, auto-detected seasons with a fade between them, and manual previews.
+- Threshold-based ("By Value") coloring across most bars, counters, and HUD elements (health, stamina, hunger, XP, items, ability cooldowns), either as a smooth gradient or discrete color ranges you define.
+- Tag-aware block search (e.g. `#wood`, `#stone`) in every block-picker screen, matching creative inventory search behavior.
+- Discord Rich Presence tuned for the server, including automatic activity detection (fighting, mining, exploring, etc.) and configurable per-area display.
+- Server-aware quality-of-life modules such as fall damage cancellation that recognizes the server's custom weapon abilities (Scythe, Whip, Wand) alongside vanilla ones, alert rules with per-rule sounds, and relocatable vanilla HUD pieces.
+- A large, from-scratch GUI pass: resizable/scrollable module and settings screens, color-range editors, region/biome/season editors, and other custom setting screens beyond what upstream Meteor Client ships.
 
 This is **not** an official Meteor Client build, and it's not affiliated with or endorsed by MeteorDevelopment.
 

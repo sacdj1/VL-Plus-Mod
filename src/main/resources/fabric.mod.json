@@ -3,7 +3,7 @@
   "name": "VL+",
   "id": "meteor-client",
   "version": "${version}",
-  "description": "VL+ utility mod for Ventureland - a fork of Meteor Client.",
+  "description": "VL+ utility mod for Ventureland - a fork of Meteor Client with custom ambience/season coloring, threshold-based HUD coloring, Discord Rich Presence, and other server-specific QoL modules.",
   "authors": [
     "sacdj"
   ],
