@@ -141,7 +141,6 @@
     "ScreenMixin",
     "SectionedEntityCacheAccessor",
     "ServerListMixin",
-    "ServerResourcePackLoaderMixin",
     "ShapeIndexBufferAccessor",
     "ShulkerBoxBlockMixin",
     "SignBlockEntityRendererMixin",

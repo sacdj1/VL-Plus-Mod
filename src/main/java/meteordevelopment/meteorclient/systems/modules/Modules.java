@@ -492,7 +492,6 @@ public class Modules extends System<Modules> {
         add(new InventoryTweaks());
         add(new NameProtect());
         add(new Notifier());
-        add(new ServerSpoof());
         add(new SoundBlocker());
         add(new NoiseNotif());
     }
