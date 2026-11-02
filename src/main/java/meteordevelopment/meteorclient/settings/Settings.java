@@ -77,6 +77,17 @@ public class Settings implements ISerializable<Settings>, Iterable<SettingGroup>
         return createGroup(name, true);
     }
 
+    /** A "section within a section" - nested inside parent's own section on the settings screen instead of getting a top-level one of its own, for grouping a big module's settings (e.g. one sub-group per boss) without a flat wall of top-level sections. Still saved/loaded/searched exactly like any other group - purely a display nesting. */
+    public SettingGroup createSubGroup(String name, boolean expanded, SettingGroup parent) {
+        SettingGroup group = createGroup(name, expanded);
+        group.parent = parent;
+        return group;
+    }
+
+    public SettingGroup createSubGroup(String name, SettingGroup parent) {
+        return createSubGroup(name, true, parent);
+    }
+
     public void registerColorSettings(Module module) {
         for (SettingGroup group : this) {
             for (Setting<?> setting : group) {

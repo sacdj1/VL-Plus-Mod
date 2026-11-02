@@ -12,10 +12,14 @@ import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
 import meteordevelopment.meteorclient.gui.widgets.input.WIntEdit;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.settings.AmbienceRegion;
+import meteordevelopment.meteorclient.systems.modules.Modules;
+import meteordevelopment.meteorclient.systems.modules.world.Ambience;
 import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraft.world.biome.Biome;
+
+import java.util.function.Consumer;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
@@ -55,6 +59,17 @@ public class RegionEditScreen extends WindowScreen {
         pointMode.action = () -> {
             region.pointMode = pointMode.checked;
 
+            // Switching modes alone never touched px/py/pz - a region whose point was never snapped
+            // (still at the Java default 0,0,0) silently matched nothing anywhere near a normal
+            // world position once Point Mode was turned on, with no indication why. Snap it to
+            // the player now instead, the same one-time convenience "Add Region At My Position"
+            // already gives box mode's corners.
+            if (region.pointMode && region.px == 0 && region.py == 0 && region.pz == 0 && mc.player != null) {
+                region.px = mc.player.getBlockX();
+                region.py = mc.player.getBlockY();
+                region.pz = mc.player.getBlockZ();
+            }
+
             clear();
             initWidgets();
         };
@@ -73,7 +88,14 @@ public class RegionEditScreen extends WindowScreen {
         table.row();
 
         table.add(theme.button("Colors (" + region.blocks.size() + " blocks)")).expandCellX().widget().action = () -> {
-            BlockColorMapScreen screen = new BlockColorMapScreen(theme, region.name, "Region", region.blocks, () -> {},
+            // Adding/editing a block here only ever mutates region.blocks itself - the "regions"
+            // Setting object's own reference never changes, so its onChanged(val -> reload()) never
+            // fires on its own. Without forcing a reload here too, a newly-added block (especially
+            // one that wasn't recolorable anywhere before, so Sodium's own color-provider wrapper
+            // only exists once Ambience says this block is "configured anywhere") silently never
+            // got the chunk re-mesh it needed to actually show up - same reload() every other
+            // override setting already gets automatically.
+            BlockColorMapScreen screen = new BlockColorMapScreen(theme, region.name, "Region", region.blocks, () -> Modules.get().get(Ambience.class).reload(),
                 block -> !region.disabledBlocks.contains(block),
                 (block, en) -> {
                     if (en) region.disabledBlocks.remove(block);
@@ -103,12 +125,26 @@ public class RegionEditScreen extends WindowScreen {
         table.row();
 
         coordRow(table, "Corner 1", () -> region.x1, v -> region.x1 = v, () -> region.y1, v -> region.y1 = v, () -> region.z1, v -> region.z1 = v);
+        snapRow(table, v -> { region.x1 = v.getX(); region.y1 = v.getY(); region.z1 = v.getZ(); });
+
         coordRow(table, "Corner 2", () -> region.x2, v -> region.x2 = v, () -> region.y2, v -> region.y2 = v, () -> region.z2, v -> region.z2 = v);
+        snapRow(table, v -> { region.x2 = v.getX(); region.y2 = v.getY(); region.z2 = v.getZ(); });
     }
 
     private void initPointMode(WTable table) {
-        table.add(theme.label("Point: (" + region.px + ", " + region.py + ", " + region.pz + ")" +
-            (region.biome.isEmpty() ? " - any biome" : " - biome: " + region.biome)));
+        table.add(theme.label("Point" + (region.biome.isEmpty() ? " - any biome" : " - biome: " + region.biome)));
+        table.row();
+
+        coordRow(table, "Point", () -> region.px, v -> region.px = v, () -> region.py, v -> region.py = v, () -> region.pz, v -> region.pz = v);
+
+        table.add(theme.label("Shape"));
+        var shape = table.add(theme.dropdown(region.pointShape)).expandCellX().widget();
+        shape.action = () -> {
+            region.pointShape = shape.get();
+
+            clear();
+            initWidgets();
+        };
         table.row();
 
         table.add(theme.button("Snap Point To My Position")).expandCellX().widget().action = () -> {
@@ -156,6 +192,45 @@ public class RegionEditScreen extends WindowScreen {
         };
         table.row();
 
+        boolean cylinderCoords = region.pointShape == AmbienceRegion.PointShape.Cylinder && region.cylinderHeightMode == AmbienceRegion.CylinderHeightMode.Coords;
+
+        if (region.pointShape == AmbienceRegion.PointShape.Cylinder) {
+            table.add(theme.label("Height Mode"));
+            var heightMode = table.add(theme.dropdown(region.cylinderHeightMode)).expandCellX().widget();
+            heightMode.action = () -> {
+                region.cylinderHeightMode = heightMode.get();
+
+                // Switching into Coords for the first time on a region that's never used it before
+                // (both still at the Java default 0) silently matched nothing anywhere near the
+                // point - snap it to the point's own current half-height range instead, the same
+                // one-time convenience every other mode switch here already gives.
+                if (region.cylinderHeightMode == AmbienceRegion.CylinderHeightMode.Coords && region.cylinderMinY == 0 && region.cylinderMaxY == 0) {
+                    region.cylinderMinY = region.py - region.radiusY;
+                    region.cylinderMaxY = region.py + region.radiusY;
+                }
+
+                clear();
+                initWidgets();
+            };
+            table.row();
+        }
+
+        if (cylinderCoords) {
+            table.add(theme.label("Height Range (Y)"));
+
+            WHorizontalList heightRow = table.add(theme.horizontalList()).expandCellX().widget();
+
+            heightRow.add(theme.label("Min"));
+            WIntEdit minY = heightRow.add(theme.intEdit(region.cylinderMinY, -2032, 2032, true)).widget();
+            minY.action = () -> region.cylinderMinY = minY.get();
+
+            heightRow.add(theme.label("Max"));
+            WIntEdit maxY = heightRow.add(theme.intEdit(region.cylinderMaxY, -2032, 2032, true)).widget();
+            maxY.action = () -> region.cylinderMaxY = maxY.get();
+
+            table.row();
+        }
+
         table.add(theme.label("Radius"));
 
         WHorizontalList radiusRow = table.add(theme.horizontalList()).expandCellX().widget();
@@ -164,9 +239,11 @@ public class RegionEditScreen extends WindowScreen {
         WIntEdit rx = radiusRow.add(theme.intEdit(region.radiusX, 1, 1000, true)).widget();
         rx.action = () -> region.radiusX = rx.get();
 
-        radiusRow.add(theme.label("Height (Y)"));
-        WIntEdit ry = radiusRow.add(theme.intEdit(region.radiusY, 1, 1000, true)).widget();
-        ry.action = () -> region.radiusY = ry.get();
+        if (!cylinderCoords) {
+            radiusRow.add(theme.label(region.pointShape == AmbienceRegion.PointShape.Cylinder ? "Half-Height (Y)" : "Height (Y)"));
+            WIntEdit ry = radiusRow.add(theme.intEdit(region.radiusY, 1, 1000, true)).widget();
+            ry.action = () -> region.radiusY = ry.get();
+        }
 
         radiusRow.add(theme.label("Length (Z)"));
         WIntEdit rz = radiusRow.add(theme.intEdit(region.radiusZ, 1, 1000, true)).widget();
@@ -224,6 +301,22 @@ public class RegionEditScreen extends WindowScreen {
         row.add(theme.label("Z"));
         WIntEdit z = row.add(theme.intEdit(zGet.get(), -30000000, 30000000, true)).widget();
         z.action = () -> zSet.set(z.get());
+
+        table.row();
+    }
+
+    /** A lone "Snap to My Position" button for the corner row right above it - stand at the spot, click, move on to the other corner. */
+    private void snapRow(WTable table, Consumer<BlockPos> apply) {
+        table.add(theme.label(""));
+
+        table.add(theme.button("Snap To My Position")).expandCellX().widget().action = () -> {
+            if (mc.player == null) return;
+
+            apply.accept(mc.player.getBlockPos());
+
+            clear();
+            initWidgets();
+        };
 
         table.row();
     }

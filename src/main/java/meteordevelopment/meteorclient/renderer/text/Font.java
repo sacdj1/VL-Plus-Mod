@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.renderer.text;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.renderer.Mesh;
 import meteordevelopment.meteorclient.utils.render.ByteTexture;
 import meteordevelopment.meteorclient.utils.render.color.Color;
@@ -23,7 +24,17 @@ public class Font {
     private final float scale;
     private final float ascent;
     private final Int2ObjectOpenHashMap<CharData> charMap = new Int2ObjectOpenHashMap<>();
-    private final static int size = 2048;
+    // Atlas side length for stb_truetype's rect packer, shared across all 6 ranges packed below in
+    // one call. At larger font heights, the combined area of ~720 glyphs can get close enough to
+    // this budget that the packer fails for a handful of individual glyphs (their exact packed
+    // rect just doesn't fit), which silently renders as an invisible/blank glyph that still advances
+    // the cursor normally - looking exactly like a missing letter, not a crash or an obvious tofu
+    // box. Which specific glyph(s) fail depends on the packer's internal sort order for that exact
+    // set of dimensions, not simply "first/last processed" - so this can affect any character,
+    // intermittently, as new setting/element names introduce new text at large sizes. Doubling the
+    // atlas side length quadruples the available area, giving enough headroom that this shouldn't
+    // happen in practice.
+    private final static int size = 4096;
 
     public Font(ByteBuffer buffer, int height) {
         this.height = height;
@@ -57,8 +68,15 @@ public class Font {
         packRange.put(STBTTPackRange.create().set(height, 8734, null, 1, cdata[5], (byte) 2, (byte) 2)); // lol
         packRange.flip();
 
-        // write and finish
-        STBTruetype.stbtt_PackFontRanges(packContext, buffer, 0, packRange);
+        // write and finish - return value is whether EVERY glyph in EVERY range packed successfully;
+        // a false here means at least one glyph didn't fit the atlas and will render as an invisible
+        // blank space (see charMap fallback in getWidth/render below) instead of its real letter.
+        // Logged rather than silently ignored so a recurrence is diagnosable from latest.log instead
+        // of needing another round of screenshot-hunting for "some letter is missing again".
+        boolean packedAll = STBTruetype.stbtt_PackFontRanges(packContext, buffer, 0, packRange);
+        if (!packedAll) {
+            MeteorClient.LOG.warn("Font atlas ({}px, {}x{}) failed to pack at least one glyph - it will render as blank space. Consider increasing Font.size.", height, size, size);
+        }
         STBTruetype.stbtt_PackEnd(packContext);
 
         // Create texture object and get font scale

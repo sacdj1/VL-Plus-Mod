@@ -17,9 +17,18 @@ public abstract class WTooltip extends WContainer implements WRoot {
         this.text = text;
     }
 
+    // Plain theme.label(text) (no maxWidth) never wraps - it just measures the WHOLE string as
+    // one line, however long. That was fine for a handful of short descriptions, but this
+    // codebase has long since grown many multi-sentence ones (250+ characters), which rendered as
+    // a single line many screens wide - mostly off-screen past the mouse position this tooltip is
+    // anchored to, reading as text that's missing or in the wrong place depending on where exactly
+    // the cursor was. Capping width here wraps it across multiple lines instead, like any normal
+    // tooltip.
+    private static final double MAX_WIDTH = 250;
+
     @Override
     public void init() {
-        add(theme.label(text)).pad(4);
+        add(theme.label(text, false, MAX_WIDTH)).pad(4);
     }
 
     @Override

@@ -45,7 +45,7 @@ public class ItemPhysics extends Module {
     private boolean renderingItem;
 
     public ItemPhysics() {
-        super(Categories.Render, "item-physics", "Applies physics to items on the ground.");
+        super(Categories.Items_, "item-physics", "Applies physics to items on the ground.");
     }
 
     @EventHandler

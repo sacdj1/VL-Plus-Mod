@@ -24,12 +24,19 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(FluidRenderer.class)
 public abstract class FluidRendererMixin {
     @Unique private final ThreadLocal<Integer> alphas = new ThreadLocal<>();
+    // Resolved once in onRender and reused in onVertex, rather than re-reading Ambience there -
+    // effectiveLavaColor() can be the active season's lava color now, not just the plain manual
+    // lavaColor setting, and should only ever be resolved from the same live state onRender just
+    // gated on.
+    @Unique private final ThreadLocal<Color> lavaColors = new ThreadLocal<>();
 
     @Inject(method = "render", at = @At("HEAD"), cancellable = true)
     private void onRender(BlockRenderView world, BlockPos pos, VertexConsumer vertexConsumer, BlockState blockState, FluidState fluidState, CallbackInfo info) {
         Ambience ambience = Modules.get().get(Ambience.class);
+        Color color = (ambience.isActive() && fluidState.isIn(FluidTags.LAVA)) ? ambience.effectiveLavaColor() : null;
 
-        if (ambience.isActive() && ambience.customLavaColor.get() && fluidState.isIn(FluidTags.LAVA)) {
+        if (color != null) {
+            lavaColors.set(color);
             alphas.set(-2);
         }
         else {
@@ -42,7 +49,7 @@ public abstract class FluidRendererMixin {
         int alpha = alphas.get();
 
         if (alpha == -2) {
-            Color color = Modules.get().get(Ambience.class).lavaColor.get();
+            Color color = lavaColors.get();
             vertex(vertexConsumer, x, y, z, color.r, color.g, color.b, color.a, u, v, light);
             info.cancel();
         }

@@ -16,6 +16,7 @@ import meteordevelopment.meteorclient.mixininterface.IVec3d;
 import meteordevelopment.meteorclient.renderer.Renderer3D;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
+import meteordevelopment.meteorclient.systems.modules.render.ItemBobbing;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.render.Zoom;
 import meteordevelopment.meteorclient.utils.Utils;
@@ -35,6 +36,7 @@ import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -92,7 +94,10 @@ public abstract class GameRendererMixin {
         matrices.push();
 
         tiltViewWhenHurt(matrices, camera.getLastTickDelta());
-        if (client.options.getBobView().getValue()) bobView(matrices, camera.getLastTickDelta());
+        ItemBobbing itemBobbing = Modules.get().get(ItemBobbing.class);
+        meteordevelopment.meteorclient.systems.modules.render.Animations animations = Modules.get().get(meteordevelopment.meteorclient.systems.modules.render.Animations.class);
+        boolean stopWorldBob = (itemBobbing != null && itemBobbing.stopVanillaBob()) || (animations != null && animations.shouldStopWorldBob());
+        if (client.options.getBobView().getValue() && !stopWorldBob) bobView(matrices, camera.getLastTickDelta());
 
         RenderSystem.getModelViewStack().mul(matrices.peek().getPositionMatrix().invert());
         matrices.pop();
@@ -189,4 +194,7 @@ public abstract class GameRendererMixin {
             !Modules.get().get(Zoom.class).renderHands())
             ci.cancel();
     }
+
+    // ItemBobbing replaces this with its own sway (see HeldItemRendererMixin) - skipping vanilla's
+    // own call here rather than fighting it afterward, so the two never compound into a double bob.
 }

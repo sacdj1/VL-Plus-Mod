@@ -50,8 +50,8 @@ public class VanillaTitleHud extends HudElement {
         .name("rotation")
         .description("Rotates the whole element around its own center, in degrees clockwise.")
         .defaultValue(0)
-        .range(0, 359)
-        .sliderRange(0, 359)
+        .range(-359, 359)
+        .sliderRange(-359, 359)
         .build()
     );
 
@@ -95,6 +95,6 @@ public class VanillaTitleHud extends HudElement {
         double centerX = x + getWidth() / 2.0;
         double centerY = y + getHeight() / 2.0;
 
-        renderer.text(example, centerX - renderer.textWidth(example, true, textScale) / 2.0, centerY - renderer.textHeight(true, textScale) / 2.0, Color.WHITE, true, textScale);
+        renderer.text(example, centerX - renderer.textWidth(example, true, textScale) / 2.0, centerY - renderer.textHeight(true, textScale) / 2.0, new Color(255, 255, 255, 90), false, textScale);
     }
 }

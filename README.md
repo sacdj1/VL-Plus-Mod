@@ -21,7 +21,7 @@ VL+ is a fork of [Meteor Client](https://github.com/MeteorDevelopment/meteor-cli
 - Threshold-based ("By Value") coloring across most bars, counters, and HUD elements (health, stamina, hunger, XP, items, ability cooldowns), either as a smooth gradient or discrete color ranges you define.
 - Tag-aware block search (e.g. `#wood`, `#stone`) in every block-picker screen, matching creative inventory search behavior.
 - Discord Rich Presence tuned for the server, including automatic activity detection (fighting, mining, exploring, etc.) and configurable per-area display.
-- Server-aware quality-of-life modules such as fall damage cancellation that recognizes the server's custom weapon abilities (Scythe, Whip, Wand) alongside vanilla ones, alert rules with per-rule sounds, and relocatable vanilla HUD pieces.
+- Server-aware quality-of-life modules such as alert rules with per-rule sounds and relocatable vanilla HUD pieces.
 - A large, from-scratch GUI pass: resizable/scrollable module and settings screens, color-range editors, region/biome/season editors, and other custom setting screens beyond what upstream Meteor Client ships.
 
 This is **not** an official Meteor Client build, and it's not affiliated with or endorsed by MeteorDevelopment.

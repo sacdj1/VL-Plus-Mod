@@ -13,7 +13,7 @@ import net.minecraft.command.CommandSource;
 
 public class DevCommand extends Command {
     public DevCommand() {
-        super("dev", "Toggles visibility of hidden debug/dev modules. Hiding them also turns off any that are running, unless run with \"keep\".");
+        super("dev", "Toggles visibility of hidden debug/dev modules. Hiding them also turns off any that are running, unless run with \"keep\". Separate from .Admin, which only affects the Cheese category.");
     }
 
     @Override

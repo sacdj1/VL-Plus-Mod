@@ -45,6 +45,11 @@ public class PlayerUtils {
     private PlayerUtils() {
     }
 
+    /** Ventureland convention (see NoMistakes/FallCancel): every weapon activates its ability on right-click, except bows, which use left-click since right-click is needed for the normal draw-and-release. Abilities only activate from hotbar slot 1 regardless of which button. */
+    public static boolean abilityActivatesViaLeftClick(net.minecraft.item.ItemStack stack) {
+        return stack.getItem() instanceof net.minecraft.item.BowItem;
+    }
+
     public static Color getPlayerColor(PlayerEntity entity, Color defaultColor) {
         if (Friends.get().isFriend(entity)) {
             return color.set(Config.get().friendColor.get()).a(defaultColor.a);

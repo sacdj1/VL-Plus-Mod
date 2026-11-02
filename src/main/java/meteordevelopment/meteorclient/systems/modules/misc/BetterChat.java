@@ -19,6 +19,7 @@ import meteordevelopment.meteorclient.mixin.ChatHudAccessor;
 import meteordevelopment.meteorclient.mixininterface.IChatHudLine;
 import meteordevelopment.meteorclient.mixininterface.IChatHudLineVisible;
 import meteordevelopment.meteorclient.settings.*;
+import meteordevelopment.meteorclient.utils.misc.Keybind;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.Utils;
@@ -108,6 +109,17 @@ public class BetterChat extends Module {
         .min(1)
         .sliderMin(1)
         .visible(antiSpam::get)
+        .build()
+    );
+
+    private final Setting<Keybind> antiSpamKey = sgFilter.add(new KeybindSetting.Builder()
+        .name("anti-spam-key")
+        .description("Key that toggles Anti Spam on/off while Better Chat is enabled.")
+        .defaultValue(Keybind.none())
+        .action(() -> {
+            antiSpam.set(!antiSpam.get());
+            info("Anti Spam %s.", antiSpam.get() ? "on" : "off");
+        })
         .build()
     );
 
@@ -402,7 +414,10 @@ public class BetterChat extends Module {
     }
 
     static {
-        registerCustomHead("[VL+]", MeteorClient.identifier("textures/icons/chat/meteor.png"));
+        // icon.png, not the old chat/meteor.png - that one's still the stock Meteor Client logo,
+        // never actually replaced with this mod's own branding (icon.png already is, same 64x64
+        // size the chat-head slot expects, and used as this mod's own fabric.mod.json icon already).
+        registerCustomHead("[VL+]", MeteorClient.identifier("icon.png"));
     }
 
     public int modifyChatWidth(int width) {

@@ -15,6 +15,11 @@ import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.meteorclient.utils.world.TickRate;
 
 public class LagNotifierHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<LagNotifierHud> INFO = new HudElementInfo<>(Hud.GROUP, "lag-notifier", "Displays if the server is lagging in ticks.", LagNotifierHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();

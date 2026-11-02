@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.events.entity.EntityRemovedEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.world.Ambience;
+import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.render.DimensionEffects;
 import net.minecraft.client.world.ClientWorld;
@@ -62,10 +63,10 @@ public abstract class ClientWorldMixin {
     @Inject(method = "getSkyColor", at = @At("HEAD"), cancellable = true)
     private void onGetSkyColor(Vec3d cameraPos, float tickDelta, CallbackInfoReturnable<Vec3d> info) {
         Ambience ambience = Modules.get().get(Ambience.class);
+        if (!ambience.isActive()) return;
 
-        if (ambience.isActive() && ambience.customSkyColor.get()) {
-            info.setReturnValue(ambience.skyColor().getVec3d());
-        }
+        SettingColor color = ambience.effectiveSkyColor();
+        if (color != null) info.setReturnValue(color.getVec3d());
     }
 
     /**
@@ -74,10 +75,10 @@ public abstract class ClientWorldMixin {
     @Inject(method = "getCloudsColor", at = @At("HEAD"), cancellable = true)
     private void onGetCloudsColor(float tickDelta, CallbackInfoReturnable<Vec3d> info) {
         Ambience ambience = Modules.get().get(Ambience.class);
+        if (!ambience.isActive()) return;
 
-        if (ambience.isActive() && ambience.customCloudColor.get()) {
-            info.setReturnValue(ambience.cloudColor.get().getVec3d());
-        }
+        SettingColor color = ambience.effectiveCloudColor();
+        if (color != null) info.setReturnValue(color.getVec3d());
     }
 
     @ModifyArgs(method = "doRandomBlockDisplayTicks", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/world/ClientWorld;randomBlockDisplayTick(IIIILnet/minecraft/util/math/random/Random;Lnet/minecraft/block/Block;Lnet/minecraft/util/math/BlockPos$Mutable;)V"))

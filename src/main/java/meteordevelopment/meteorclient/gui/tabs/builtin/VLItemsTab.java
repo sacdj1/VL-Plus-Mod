@@ -9,6 +9,7 @@ import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.tabs.Tab;
 import meteordevelopment.meteorclient.gui.tabs.TabScreen;
 import meteordevelopment.meteorclient.gui.tabs.WindowTabScreen;
+import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WMinus;
@@ -23,7 +24,7 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class VLItemsTab extends Tab {
     public VLItemsTab() {
-        super("VL Items");
+        super("Custom Items");
     }
 
     @Override
@@ -65,6 +66,20 @@ public class VLItemsTab extends Tab {
 
                 if (VLItems.get().add(item)) reload();
                 else ChatUtils.error("That item is already in the pool.");
+            };
+
+            WHorizontalList clipboard = add(theme.horizontalList()).expandX().widget();
+
+            WButton copy = clipboard.add(theme.button("Copy")).expandX().widget();
+            copy.action = () -> {
+                if (toClipboard()) ChatUtils.info("Copied to clipboard.");
+                else ChatUtils.error("Failed to copy to clipboard.");
+            };
+
+            WButton paste = clipboard.add(theme.button("Paste")).expandX().widget();
+            paste.action = () -> {
+                if (fromClipboard()) { reload(); ChatUtils.info("Pasted from clipboard."); }
+                else ChatUtils.error("Failed to paste from clipboard - nothing valid there.");
             };
         }
 

@@ -14,6 +14,7 @@ import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WidgetScreen;
+import meteordevelopment.meteorclient.gui.screens.settings.NamedAreaListScreen;
 import meteordevelopment.meteorclient.gui.utils.StarscriptTextBoxRenderer;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
@@ -24,6 +25,8 @@ import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.MeteorStarscript;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.starscript.Script;
+import meteordevelopment.starscript.value.Value;
+import meteordevelopment.starscript.value.ValueMap;
 import net.minecraft.client.gui.screen.*;
 import net.minecraft.client.gui.screen.multiplayer.AddServerScreen;
 import net.minecraft.client.gui.screen.multiplayer.ConnectScreen;
@@ -52,8 +55,8 @@ public class DiscordPresence extends Module {
 
     private final Setting<List<String>> line1Strings = sgLine1.add(new StringListSetting.Builder()
         .name("line-1-messages")
-        .description("Messages used for the first line.")
-        .defaultValue("Ventureland da best!")
+        .description("Messages used for the first line - the one Discord actually shows at a glance (member list, etc.) before someone clicks in for the full card. {player.activity} is a guess at what you're currently doing (\"Fighting X\"/\"Mining X\"/plain \"Exploring\" - deliberately not biome-based, not meaningful for Ventureland); {zone.current} is whichever named area (see Zones below) your position falls inside, once you've plotted some.")
+        .defaultValue("{player.activity}")
         .onChanged(strings -> recompileLine1())
         .renderer(StarscriptTextBoxRenderer.class)
         .build()
@@ -79,8 +82,8 @@ public class DiscordPresence extends Module {
 
     private final Setting<List<String>> line2Strings = sgLine2.add(new StringListSetting.Builder()
         .name("line-2-messages")
-        .description("Messages used for the second line.")
-        .defaultValue("{round(server.tps, 1)} TPS", "{server.bossbar}")
+        .description("Messages used for the second line. {player.activity} is a guess at what you're currently doing - \"Fighting X\" (recently attacked/been hit), \"Mining X\", or plain \"Exploring\" as the default.")
+        .defaultValue("{player.activity}", "{round(server.tps, 1)} TPS", "{server.bossbar}")
         .onChanged(strings -> recompileLine2())
         .renderer(StarscriptTextBoxRenderer.class)
         .build()
@@ -102,6 +105,34 @@ public class DiscordPresence extends Module {
         .build()
     );
 
+    // Zones - exposes {zone.current} to Line 1/2's own Starscript templates above, rather than
+    // being its own fixed on/off toggle. Whether (and where) it actually shows up in your presence
+    // is entirely up to whether you put {zone.current} in a template - same as every other
+    // Starscript value here (TPS, boss bar, activity).
+
+    private final SettingGroup sgZones = settings.createGroup("Zones");
+
+    private final Setting<List<NamedArea>> areas = sgZones.add(new NamedAreaListSetting.Builder()
+        .name("named-areas")
+        .description("X/Z box areas for {zone.current} below - see Manage Areas.")
+        .build()
+    );
+
+    private final Setting<String> defaultAreaName = sgZones.add(new StringSetting.Builder()
+        .name("default-area-name")
+        .description("{zone.current}'s value while you're not inside any area below - Ventureland's own zones are numbered 0-25, so this is deliberately NOT \"Area 0\" to avoid colliding with the real one.")
+        .defaultValue("Unknown Area")
+        .build()
+    );
+
+    private final Setting<Void> manageAreas = sgZones.add(new ButtonSetting.Builder()
+        .name("manage-areas")
+        .description("Add/edit/remove the named areas above.")
+        .buttonText("Manage Areas")
+        .screen(theme -> new NamedAreaListScreen(theme, areas))
+        .build()
+    );
+
     private static final RichPresence rpc = new RichPresence();
     private SmallImage currentSmallImage;
     private int ticks;
@@ -120,10 +151,31 @@ public class DiscordPresence extends Module {
         registerCustomState("me.jellysquid.mods.sodium.client", "Changing options");
     }
 
+    private static DiscordPresence instance;
+
     public DiscordPresence() {
         super(Categories.Misc, "discord-presence", "Displays VL+ as your presence on Discord.");
 
         runInMainMenu = true;
+        instance = this;
+
+        // Registered here rather than in MeteorStarscript itself - zone.current is specifically a
+        // Discord Presence concept (its areas are only ever configured through this module), not a
+        // general-purpose value every other consumer of Starscript needs. Available to any template
+        // regardless of whether this module is currently active, same as every other value already
+        // registered in MeteorStarscript's own init().
+        MeteorStarscript.ss.set("zone", new ValueMap().set("current", DiscordPresence::currentAreaName));
+    }
+
+    private static Value currentAreaName() {
+        if (MeteorClient.mc.player == null) return Value.string("");
+
+        int x = MeteorClient.mc.player.getBlockX(), z = MeteorClient.mc.player.getBlockZ();
+        for (NamedArea area : instance.areas.get()) {
+            if (area.contains(x, z)) return Value.string(area.name);
+        }
+
+        return Value.string(instance.defaultAreaName.get());
     }
 
     /** Registers a custom state to be used when the current screen is a class in the specified package. */

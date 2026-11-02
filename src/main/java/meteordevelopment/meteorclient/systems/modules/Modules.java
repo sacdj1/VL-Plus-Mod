@@ -68,6 +68,9 @@ public class Modules extends System<Modules> {
     private Module moduleToBind;
     private boolean awaitingKeyRelease = false;
     private boolean devUnlocked = false;
+    private boolean cheeseUnlocked = false;
+    private static final String DEFAULT_ADMIN_PIN = "1337";
+    private String adminPinHash = hashPin(DEFAULT_ADMIN_PIN);
 
     public Modules() {
         super("modules");
@@ -248,11 +251,61 @@ public class Modules extends System<Modules> {
         return devUnlocked;
     }
 
+    public boolean isCheeseUnlocked() {
+        return cheeseUnlocked;
+    }
+
+    public boolean hasAdminPin() {
+        return !adminPinHash.isEmpty();
+    }
+
+    public boolean isDefaultAdminPin() {
+        return checkAdminPin(DEFAULT_ADMIN_PIN);
+    }
+
+    public boolean checkAdminPin(String pin) {
+        return hasAdminPin() && adminPinHash.equals(hashPin(pin));
+    }
+
+    public void setAdminPin(String pin) {
+        adminPinHash = hashPin(pin);
+    }
+
+    private static String hashPin(String pin) {
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256").digest(("vlplus-admin:" + pin).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public boolean toggleCheese() {
+        cheeseUnlocked = !cheeseUnlocked;
+        return cheeseUnlocked;
+    }
+
+    /** Only disables hidden active modules OUTSIDE the Cheese category - .dev and .Admin are separate unlocks, each should only affect its own set of hidden modules. */
     public int disableHiddenActiveModules() {
         int count = 0;
 
         for (Module module : getAll()) {
-            if (module.hidden && module.isActive()) {
+            if (module.hidden && !module.adminOnly && module.category != Categories.Cheese && module.isActive()) {
+                module.toggle();
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    public int disableHiddenCheeseActiveModules() {
+        int count = 0;
+
+        for (Module module : getAll()) {
+            if ((module.adminOnly || (module.hidden && module.category == Categories.Cheese)) && module.isActive()) {
                 module.toggle();
                 count++;
             }
@@ -344,6 +397,20 @@ public class Modules extends System<Modules> {
                 }
             }
         }
+
+        applyAdminAutoEnable();
+    }
+
+    /**
+     * With the Cheese category unlocked, the admin-only Bones features (a section of the Visualizer) are meant to just be there - switch the
+     * Visualizer on (once per unlock / world join, so turning it off by hand still sticks for the session).
+     * Controlled by Cheese Control's "auto-enable" switch, on by default.
+     */
+    public void applyAdminAutoEnable() {
+        if (!cheeseUnlocked || !meteordevelopment.meteorclient.systems.modules.misc.CheeseControl.autoEnable()) return;
+
+        meteordevelopment.meteorclient.systems.modules.render.Visualizer visualizer = get(meteordevelopment.meteorclient.systems.modules.render.Visualizer.class);
+        if (visualizer != null && !visualizer.isActive()) visualizer.toggle();
     }
 
     @EventHandler
@@ -378,6 +445,9 @@ public class Modules extends System<Modules> {
         tag.put("modules", modulesTag);
 
         tag.putBoolean("devUnlocked", devUnlocked);
+        tag.putBoolean("cheeseUnlocked", cheeseUnlocked);
+        tag.putBoolean("bonesRingsMigrated", bonesRingsMigrated);
+        tag.putString("adminPinHash", adminPinHash);
 
         return tag;
     }
@@ -386,6 +456,11 @@ public class Modules extends System<Modules> {
     public Modules fromTag(NbtCompound tag) {
         disableAll();
 
+        // Unlock flags FIRST: admin-only modules check them in onActivate(), and restoring a saved-on module
+        // while the flag was still false switched it straight back off on every launch.
+        devUnlocked = tag.getBoolean("devUnlocked");
+        cheeseUnlocked = tag.getBoolean("cheeseUnlocked");
+
         NbtList modulesTag = tag.getList("modules", 10);
         for (NbtElement moduleTagI : modulesTag) {
             NbtCompound moduleTag = (NbtCompound) moduleTagI;
@@ -393,10 +468,50 @@ public class Modules extends System<Modules> {
             if (module != null) module.fromTag(moduleTag);
         }
 
-        devUnlocked = tag.getBoolean("devUnlocked");
+        migrateBonesRings(tag);
+
+        String savedPin = tag.getString("adminPinHash");
+        adminPinHash = savedPin.isEmpty() ? hashPin(DEFAULT_ADMIN_PIN) : savedPin;
 
         return this;
     }
+
+    /**
+     * Bones Rings used to be its own module; it's now a section of the Visualizer. Carries its saved settings over once
+     * (from this file, or from the backup copy taken before the merge if this file no longer has them).
+     */
+    private void migrateBonesRings(NbtCompound tag) {
+        if (tag.getBoolean("bonesRingsMigrated")) { bonesRingsMigrated = true; return; }
+
+        meteordevelopment.meteorclient.systems.modules.render.Visualizer visualizer = get(meteordevelopment.meteorclient.systems.modules.render.Visualizer.class);
+        if (visualizer == null) return;
+
+        NbtCompound found = findModuleTag(tag, "bones-rings");
+
+        if (found == null) {
+            java.nio.file.Path backup = MeteorClient.FOLDER.toPath().resolve("modules.nbt.bak-before-visualizer-merge");
+            try {
+                if (java.nio.file.Files.exists(backup)) found = findModuleTag(net.minecraft.nbt.NbtIo.read(backup), "bones-rings");
+            } catch (Exception e) {
+                MeteorClient.LOG.warn("Couldn't read the Bones Rings settings backup", e);
+            }
+        }
+
+        if (found != null && found.get("settings") instanceof NbtCompound settingsTag) visualizer.bones().settings.fromTag(settingsTag);
+        bonesRingsMigrated = true;
+    }
+
+    private static NbtCompound findModuleTag(NbtCompound tag, String name) {
+        if (tag == null) return null;
+
+        for (NbtElement el : tag.getList("modules", 10)) {
+            if (el instanceof NbtCompound c && c.getString("name").equals(name)) return c;
+        }
+
+        return null;
+    }
+
+    private boolean bonesRingsMigrated;
 
     // INIT MODULES
 
@@ -455,19 +570,25 @@ public class Modules extends System<Modules> {
         add(new FreeLook());
         add(new Fullbright());
         add(new HandView());
+        add(new Animations());
+        add(new QuickActions());
+        add(new ActionWheel());
+        add(new Arena());
         add(new ItemPhysics());
         add(new ItemHighlight());
         add(new ItemInfo());
         add(new NoRender());
         add(new TimeChanger());
         add(new TrueSight());
+        add(new Awareness());
+        add(new ItemBobbing());
         add(new Hitboxes());
         add(new ParticleColor());
         add(new XPBarAdjust());
         add(new XPLevelAdjust());
         add(new HealthBarAdjust());
         add(new StaminaBarAdjust());
-        add(new GuiScaleAdjust());
+        add(new HitTint());
         add(new WaypointsModule());
         add(new Zoom());
     }
@@ -485,6 +606,10 @@ public class Modules extends System<Modules> {
         add(new AutoRespawn());
         add(new BetterChat());
         add(new BossDebug());
+        add(new DebugLog());
+        add(new ResourceProfiler());
+        add(new ItemDisplaySettings());
+        add(new FightRecorder());
         add(new EntityDataDumper());
         add(new ItemDataDumper());
         add(new HudSnapshotDumper());
@@ -494,6 +619,11 @@ public class Modules extends System<Modules> {
         add(new Notifier());
         add(new SoundBlocker());
         add(new NoiseNotif());
+        add(new NoMistakes());
+        add(new FallCancel());
+        add(new LineOfSight());
+        add(new Visualizer());
+        add(new CheeseControl());
     }
 
     public static class ModuleRegistry extends SimpleRegistry<Module> {

@@ -21,6 +21,11 @@ import java.util.List;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class PlayerRadarHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<PlayerRadarHud> INFO = new HudElementInfo<>(Hud.GROUP, "player-radar", "Displays players in your visual range.", PlayerRadarHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();

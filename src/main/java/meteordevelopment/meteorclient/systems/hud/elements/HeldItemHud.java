@@ -23,6 +23,11 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
  * what's selected. Same render path as HotbarSlotHud otherwise (see there).
  */
 public class HeldItemHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<HeldItemHud> INFO = new HudElementInfo<>(Hud.GROUP, "held-item", "Displays whatever item is currently held.", HeldItemHud::new);
 
     public enum HandChoice {
@@ -32,6 +37,7 @@ public class HeldItemHud extends HudElement {
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgBackground = settings.createGroup("Background");
+    private final SettingGroup sgBorder = settings.createGroup("Border");
 
     private final Setting<HandChoice> hand = sgGeneral.add(new EnumSetting.Builder<HandChoice>()
         .name("hand")
@@ -73,15 +79,55 @@ public class HeldItemHud extends HudElement {
         .build()
     );
 
+    private final Setting<Boolean> showBorder = sgBorder.add(new BoolSetting.Builder()
+        .name("show-border")
+        .description("Draws an outline around the element.")
+        .defaultValue(false)
+        .onChanged(v -> calculateSize())
+        .build()
+    );
+
+    private final Setting<SettingColor> borderColor = sgBorder.add(new ColorSetting.Builder()
+        .name("border-color")
+        .description("Color of the outline.")
+        .defaultValue(new SettingColor(255, 255, 255))
+        .visible(showBorder::get)
+        .build()
+    );
+
+    private final Setting<Integer> borderThickness = sgBorder.add(new IntSetting.Builder()
+        .name("border-thickness")
+        .description("Thickness of the outline, in pixels. Also reserves this much extra space around the item so the outline doesn't overlap it.")
+        .defaultValue(1)
+        .min(1)
+        .sliderRange(1, 5)
+        .visible(showBorder::get)
+        .onChanged(v -> calculateSize())
+        .build()
+    );
+
     private HeldItemHud() {
         super(INFO);
 
         calculateSize();
     }
 
+    // Plain spacing setting - independent of the border outline. The outline itself (below) is
+    // drawn OUTSIDE the box's own bounds rather than reserved-for by growing the box, specifically
+    // so the box's anchored size/position (and therefore the item's own render position) never
+    // depends on border settings at all - toggling Show Border or changing its thickness never
+    // moves the item, it just adds/removes a frame around whatever's already there. Growing the box
+    // to make room for the border (an earlier attempt) broke this: for a Left/Top-anchored element,
+    // growing size only extends the box AWAY from its anchored corner, so the item visibly shifted
+    // toward the anchor corner every time the border toggled on - the anchor math itself was fine,
+    // growing the box at all was just the wrong way to make room for a purely decorative ring.
+    private double itemInset() {
+        return border.get();
+    }
+
     @Override
     public void setSize(double width, double height) {
-        super.setSize(width + border.get() * 2, height + border.get() * 2);
+        super.setSize(width, height);
     }
 
     private void calculateSize() {
@@ -92,6 +138,17 @@ public class HeldItemHud extends HudElement {
     public void render(HudRenderer renderer) {
         if (background.get()) renderer.quad(x, y, getWidth(), getHeight(), backgroundColor.get());
 
+        if (showBorder.get()) {
+            double t = borderThickness.get() * scale.get();
+            double w = getWidth(), h = getHeight();
+            Color c = borderColor.get();
+
+            renderer.quad(x - t, y - t, w + t * 2, t, c);
+            renderer.quad(x - t, y + h, w + t * 2, t, c);
+            renderer.quad(x - t, y, t, h, c);
+            renderer.quad(x + w, y, t, h, c);
+        }
+
         ItemStack stack = mc.player != null ? mc.player.getStackInHand(hand.get() == HandChoice.MainHand ? Hand.MAIN_HAND : Hand.OFF_HAND) : ItemStack.EMPTY;
 
         if (stack.isEmpty() && !isInEditor()) return;
@@ -101,8 +158,9 @@ public class HeldItemHud extends HudElement {
             renderer.line(x, y + getHeight(), x + getWidth(), y, Color.GRAY);
         } else {
             renderer.post(() -> {
-                double px = this.x + border.get();
-                double py = this.y + border.get();
+                double inset = itemInset();
+                double px = this.x + inset;
+                double py = this.y + inset;
 
                 String countOverride = stack.getCount() > 1 ? String.valueOf(stack.getCount()) : null;
                 renderer.item(stack, (int) px, (int) py, scale.get().floatValue(), true, countOverride);

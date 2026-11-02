@@ -16,6 +16,11 @@ import net.minecraft.util.math.MathHelper;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class CompassHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<CompassHud> INFO = new HudElementInfo<>(Hud.GROUP, "compass", "Displays a compass.", CompassHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();

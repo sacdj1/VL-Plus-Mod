@@ -5,24 +5,23 @@
 
 package meteordevelopment.meteorclient.systems.modules.render;
 
-import meteordevelopment.meteorclient.events.world.TickEvent;
-import meteordevelopment.meteorclient.settings.BoolSetting;
 import meteordevelopment.meteorclient.settings.EntityTypeListSetting;
 import meteordevelopment.meteorclient.settings.EnumSetting;
 import meteordevelopment.meteorclient.settings.Setting;
 import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
-import meteordevelopment.orbit.EventHandler;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 
 import java.util.Set;
 
 /**
- * Forces vanilla's F3+B hitbox rendering on (instead of needing the vanilla debug toggle), and can
- * additionally force hitboxes to render on invisible entities - unlike TrueSight (which reveals an
- * invisible entity's full body model), this only ever shows the wireframe hitbox, nothing else.
+ * Forces vanilla's F3+B hitbox rendering on the moment this module turns on (including at game
+ * launch, if it was already on when the config loaded - Module.fromTag() calls toggle(), which runs
+ * onActivate() same as flipping it by hand would), and back off when it turns off. Deliberately
+ * doesn't fight F3+B afterward - while the module's on, pressing F3+B toggles hitboxes exactly like
+ * it normally would, same as if this module didn't exist; it only sets the initial state.
  */
 public class Hitboxes extends Module {
     public enum ListMode {
@@ -32,13 +31,6 @@ public class Hitboxes extends Module {
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgInvisible = settings.createGroup("Invisible Entities");
-
-    private final Setting<Boolean> alwaysOn = sgGeneral.add(new BoolSetting.Builder()
-        .name("always-on")
-        .description("Keeps vanilla hitboxes forced on continuously - even in the main menu - so nothing (including you pressing F3+B) can turn them off while this module is active.")
-        .defaultValue(true)
-        .build()
-    );
 
     private final Setting<ListMode> generalListMode = sgGeneral.add(new EnumSetting.Builder<ListMode>()
         .name("general-list-mode")
@@ -80,13 +72,6 @@ public class Hitboxes extends Module {
     @Override
     public void onDeactivate() {
         mc.getEntityRenderDispatcher().setRenderHitboxes(false);
-    }
-
-    @EventHandler
-    private void onTick(TickEvent.Post event) {
-        if (alwaysOn.get() && !mc.getEntityRenderDispatcher().shouldRenderHitboxes()) {
-            mc.getEntityRenderDispatcher().setRenderHitboxes(true);
-        }
     }
 
     public boolean showHitbox(Entity entity) {

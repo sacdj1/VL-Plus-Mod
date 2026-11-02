@@ -48,10 +48,10 @@ public class ReaderRuleEditScreen extends WindowScreen {
 
         table.add(theme.label("Name"));
         WTextBox name = table.add(theme.textBox(rule.name)).expandX().widget();
-        name.action = () -> rule.name = name.get();
+        name.action = () -> { if (!name.get().isBlank()) rule.name = name.get(); };
         table.row();
 
-        table.add(theme.label("Pattern (plain text, or a regex if Use Regex is on - matches anywhere in the text, not the whole thing)"));
+        table.add(theme.label("Pattern (plain text, or a regex if Use Regex is on - matches anywhere in the text, not the whole thing)", 400));
         WTextBox pattern = table.add(theme.textBox(rule.pattern)).expandX().widget();
         pattern.action = () -> rule.pattern = pattern.get();
         table.row();
@@ -66,7 +66,30 @@ public class ReaderRuleEditScreen extends WindowScreen {
         addCheckboxRow(table, "Chat", rule.watchChat, v -> rule.watchChat = v);
         addCheckboxRow(table, "Boss Bar", rule.watchBossBar, v -> rule.watchBossBar = v);
         addCheckboxRow(table, "Scoreboard", rule.watchScoreboard, v -> rule.watchScoreboard = v);
-        addCheckboxRow(table, "Title/Subtitle", rule.watchTitle, v -> rule.watchTitle = v);
+
+        table.add(theme.label("Title/Subtitle"));
+        var titleWatchDropdown = table.add(theme.dropdown(rule.titleWatch)).expandCellX().widget();
+        titleWatchDropdown.action = () -> rule.titleWatch = titleWatchDropdown.get();
+        table.row();
+
+        addCheckboxRowRefresh(table, "Quality (your current weapon + chest/legs armor's own Quality %, instead of any text source - Pattern/Use Regex above are ignored while this is on)", rule.watchQuality, v -> rule.watchQuality = v);
+
+        if (rule.watchQuality) {
+            table.add(theme.label("Fire when Quality is"));
+            var comparatorDropdown = table.add(theme.dropdown(rule.qualityComparator)).expandCellX().widget();
+            comparatorDropdown.action = () -> rule.qualityComparator = comparatorDropdown.get();
+            table.row();
+
+            table.add(theme.label("this value"));
+            WDoubleEdit threshold = table.add(theme.doubleEdit(rule.qualityThreshold, 0, 1000)).expandX().widget();
+            threshold.action = () -> rule.qualityThreshold = threshold.get();
+            table.row();
+        }
+
+        table.add(theme.label("Re-trigger Cooldown (seconds) - how long a match stays silent before it can fire again, even on identical repeat text", 400));
+        WDoubleEdit cooldown = table.add(theme.doubleEdit(rule.cooldownSeconds, 0, 300)).expandX().widget();
+        cooldown.action = () -> rule.cooldownSeconds = cooldown.get();
+        table.row();
 
         table.add(theme.horizontalSeparator()).expandX();
         table.row();
@@ -77,6 +100,7 @@ public class ReaderRuleEditScreen extends WindowScreen {
         addCheckboxRow(table, "Toast", rule.notifyToast, v -> rule.notifyToast = v);
         addCheckboxRow(table, "System Notification", rule.notifySystem, v -> rule.notifySystem = v);
         addCheckboxRow(table, "HUD Text (Reader Notif element)", rule.notifyHudText, v -> rule.notifyHudText = v);
+        addCheckboxRow(table, "Text-to-Speech (reads the matched text aloud)", rule.notifyTts, v -> rule.notifyTts = v);
 
         table.add(theme.label("HUD Text duration (seconds)"));
         WDoubleEdit duration = table.add(theme.doubleEdit(rule.hudDuration, 0.5, 60)).expandX().widget();
@@ -106,7 +130,7 @@ public class ReaderRuleEditScreen extends WindowScreen {
 
         switch (rule.soundMode) {
             case Default -> {
-                table.add(theme.label("Uses the Alerts module's own Sound setting above (Sound / Custom Sound File)."));
+                table.add(theme.label("Uses the Alerts module's own Sound setting above (Sound / Custom Sound File).", 400));
                 table.row();
             }
 
@@ -152,7 +176,7 @@ public class ReaderRuleEditScreen extends WindowScreen {
                 table.row();
 
                 if (!rule.ensureCustomSoundSlot()) {
-                    table.add(theme.label("No free custom sound slots left (32 max across all rules) - this rule will play no sound until another rule frees one up."));
+                    table.add(theme.label("No free custom sound slots left (32 max across all rules) - this rule will play no sound until another rule frees one up.", 400));
                     table.row();
                 }
             }

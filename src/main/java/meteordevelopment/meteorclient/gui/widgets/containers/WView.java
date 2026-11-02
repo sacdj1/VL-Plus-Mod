@@ -40,15 +40,20 @@ public abstract class WView extends WVerticalList {
 
         super.onCalculateSize();
 
-        if (height > maxHeight) {
+        // Only clamp/scroll at all when hasScrollBar is actually true - a view with no scrollbar
+        // (e.g. ModulesScreen's own category dropdowns) is meant to show its FULL content, not get
+        // silently height-capped with no way to interact with the resulting scroll state. Without
+        // this gate, height still got clamped and canScroll still went true purely from content
+        // exceeding maxHeight, with only the handle's own width/draw skipped - leaving a real
+        // (if stuck/inaccessible) scroll offset that moveAfterPositionWidgets below could still
+        // reapply via moveCells(), visibly shifting the whole body away from its own header.
+        if (hasScrollBar && height > maxHeight) {
             actualHeight = height;
             height = maxHeight;
             canScroll = true;
 
-            if (hasScrollBar) {
-                widthRemove = handleWidth() * 2;
-                width += widthRemove;
-            }
+            widthRemove = handleWidth() * 2;
+            width += widthRemove;
 
             if (couldScroll) moveAfterPositionWidgets = true;
         }
@@ -134,11 +139,20 @@ public abstract class WView extends WVerticalList {
     public boolean render(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
         updateScroll(delta);
 
-        if (canScroll) renderer.scissorStart(x, y, width, height);
-        boolean render = super.render(renderer, mouseX, mouseY, delta);
-        if (canScroll) renderer.scissorEnd();
-
-        return render;
+        // Always scissored to this view's own viewport now, not just while it can scroll - same bug,
+        // same fix as WWindow/WSection: a view whose content happens to fit (canScroll false) used to
+        // skip scissorStart/scissorEnd entirely, which also skips GuiRenderer's flush pair, letting
+        // its queued text pile into whatever LATER view/window happens to force a flush instead of
+        // its own. Harmless to always scissor to (x, y, width, height) - that's exactly this view's
+        // own bounds either way.
+        // try/finally so scissorEnd() always runs even if a child widget's render() throws - see
+        // WWindow.render()'s own note; the same unguarded pairing here caused the identical failure.
+        renderer.scissorStart(x, y, width, height);
+        try {
+            return super.render(renderer, mouseX, mouseY, delta);
+        } finally {
+            renderer.scissorEnd();
+        }
     }
 
     private void updateScroll(double delta) {

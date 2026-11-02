@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.hud.screens;
 
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WidgetScreen;
 import meteordevelopment.meteorclient.gui.tabs.builtin.HudTab;
@@ -102,7 +103,12 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
 
         if (dragging && !selection.isEmpty()) {
             if (selectionSnapBox == null) selectionSnapBox = new SelectionBox();
-            snapper.move(selectionSnapBox, (int) mouseX - lastMouseX, (int) mouseY - lastMouseY);
+
+            if (hud.noSnapKeybind.get().isPressed()) {
+                snapper.unsnap();
+                selectionSnapBox.move((int) mouseX - lastMouseX, (int) mouseY - lastMouseY);
+            }
+            else snapper.move(selectionSnapBox, (int) mouseX - lastMouseX, (int) mouseY - lastMouseY);
         }
 
         if (pressed) moved = true;
@@ -131,7 +137,7 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
         else {
             if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
                 HudElement hovered = getHovered((int) mouseX, (int) mouseY);
-                if (hovered != null) hovered.toggle();
+                if (hovered != null && Hud.get().clickToToggle.get()) hovered.toggle();
             }
             else if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
                 HudElement hovered = getHovered((int) mouseX, (int) mouseY);
@@ -238,6 +244,18 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
         }
     }
 
+    private static final double CROSSHAIR_SIZE = 7;
+
+    /** The real crosshair isn't rendered here (this is a screen, not gameplay) - a small marker at the exact center gives something to line elements up against instead. */
+    private void renderCrosshair() {
+        double centerX = Utils.getWindowWidth() / 2.0;
+        double centerY = Utils.getWindowHeight() / 2.0;
+        Color color = hud.crosshairColor.get();
+
+        Renderer2D.COLOR.line(centerX - CROSSHAIR_SIZE, centerY, centerX + CROSSHAIR_SIZE, centerY, color);
+        Renderer2D.COLOR.line(centerX, centerY - CROSSHAIR_SIZE, centerX, centerY + CROSSHAIR_SIZE, color);
+    }
+
     private HudElement getHovered(int mouseX, int mouseY) {
         for (HudElement element : hud) {
             if (isPointInElement(element, mouseX, mouseY)) return element;
@@ -283,21 +301,57 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
         Renderer2D.COLOR.quad(x + w - 1, y + 1, 1, h - 2, olColor);
     }
 
-    // Tried a full outline matching the element's own (possibly rotated) bounds - still read as a
-    // confusing second box stacked on top of elements that draw their own real content (icons,
-    // bars, text), especially anything center-anchored where the box itself is just a placeholder
-    // region wider than what's actually drawn (Title/Subtitle/Action Bar and friends). Simplified
-    // to a small fixed-size marker at the element's own center instead - always unambiguous about
-    // "here's the element", never competing with or obscuring its actual rendered content, and no
-    // rotation math needed since a small square looks the same regardless of angle.
+    // Elements that draw their own background box (HudElement.hasOwnBackground()) get a small fixed-
+    // size marker at their own center instead of a full outline - a full outline there would double
+    // up with the element's own visible box, which read as a confusing second box. Elements without
+    // their own background (text/icon-only, Vanilla relocator elements, center-anchored placeholder
+    // regions like Title/Subtitle/Action Bar) get the real (rotation-aware) outline instead, since
+    // there's nothing else marking their bounds.
     private static final double MARKER_SIZE = 10;
 
     private void renderElement(HudElement element, Color bgColor, Color olColor) {
-        double centerX = element.x + element.getWidth() / 2.0;
-        double centerY = element.y + element.getHeight() / 2.0;
-        double half = MARKER_SIZE / 2.0;
+        if (element.hasOwnBackground()) {
+            double centerX = element.x + element.getWidth() / 2.0;
+            double centerY = element.y + element.getHeight() / 2.0;
+            double half = MARKER_SIZE / 2.0;
 
-        renderQuad(centerX - half, centerY - half, MARKER_SIZE, MARKER_SIZE, bgColor, olColor);
+            renderQuad(centerX - half, centerY - half, MARKER_SIZE, MARKER_SIZE, bgColor, olColor);
+            return;
+        }
+
+        int rotation = element.getEditorRotation();
+        if (rotation == 0) {
+            double x = element.x, y = element.y, w = element.getWidth(), h = element.getHeight();
+
+            Renderer2D.COLOR.quad(x, y, w, 1, olColor);
+            Renderer2D.COLOR.quad(x, y + h - 1, w, 1, olColor);
+            Renderer2D.COLOR.quad(x, y + 1, 1, h - 2, olColor);
+            Renderer2D.COLOR.quad(x + w - 1, y + 1, 1, h - 2, olColor);
+            return;
+        }
+
+        double halfWidth = element.getWidth() / 2.0;
+        double halfHeight = element.getHeight() / 2.0;
+        double centerX = element.x + halfWidth;
+        double centerY = element.y + halfHeight;
+
+        double rad = Math.toRadians(rotation);
+        double cos = Math.cos(rad), sin = Math.sin(rad);
+
+        double[] lx = {-halfWidth, -halfWidth, halfWidth, halfWidth};
+        double[] ly = {-halfHeight, halfHeight, halfHeight, -halfHeight};
+        double[] cx = new double[4];
+        double[] cy = new double[4];
+
+        for (int i = 0; i < 4; i++) {
+            cx[i] = centerX + lx[i] * cos - ly[i] * sin;
+            cy[i] = centerY + lx[i] * sin + ly[i] * cos;
+        }
+
+        for (int i = 0; i < 4; i++) {
+            int next = (i + 1) % 4;
+            Renderer2D.COLOR.line(cx[i], cy[i], cx[next], cy[next], olColor);
+        }
     }
 
     @Override
@@ -317,11 +371,14 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
 
         Renderer2D.COLOR.begin();
         onRender(mouseX, mouseY);
+        if (hud.showCrosshair.get()) renderCrosshair();
         Renderer2D.COLOR.render(new MatrixStack());
 
         Utils.scaledProjection();
         runAfterRenderTasks();
     }
+
+    private static final java.util.Set<String> failedElements = new java.util.HashSet<>();
 
     public static void renderElements(DrawContext drawContext) {
         Hud hud = Hud.get();
@@ -329,18 +386,29 @@ public class HudEditorScreen extends WidgetScreen implements Snapper.Container {
 
         HudRenderer.INSTANCE.begin(drawContext);
 
-        for (HudElement element : hud) {
-            element.updatePos();
+        // try/finally (outer) + per-element try/catch (inner), same as Hud.onRender's own fix for
+        // the identical failure mode: one element throwing used to skip end() below entirely,
+        // leaving the renderer's text-batch state stuck "building" forever - the editor (and every
+        // other screen sharing this same renderer) would stay broken until the game restarted.
+        try {
+            for (HudElement element : hud) {
+                try {
+                    element.updatePos();
 
-            boolean shouldRender = inactiveOnly ? !element.isActive() : true;
-            if (shouldRender) {
-                HudRenderer.INSTANCE.setElementAlpha(element.alpha.get() / 255.0);
-                element.render(HudRenderer.INSTANCE);
-                HudRenderer.INSTANCE.setElementAlpha(1.0);
+                    boolean shouldRender = inactiveOnly ? !element.isActive() : true;
+                    if (shouldRender) {
+                        HudRenderer.INSTANCE.setElementAlpha(element.alpha.get() / 255.0);
+                        element.render(HudRenderer.INSTANCE);
+                    }
+                } catch (RuntimeException e) {
+                    if (failedElements.add(element.info.name)) MeteorClient.LOG.error("HUD element {} threw while rendering (in editor)", element.info.name, e);
+                } finally {
+                    HudRenderer.INSTANCE.setElementAlpha(1.0);
+                }
             }
+        } finally {
+            HudRenderer.INSTANCE.end();
         }
-
-        HudRenderer.INSTANCE.end();
     }
 
     private void renderSplitLines(boolean increment, double delta) {

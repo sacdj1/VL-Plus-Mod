@@ -67,8 +67,15 @@ public class VanillaXPBarHud extends HudElement {
         .name("rotation")
         .description("Rotates the whole element around its own center, in degrees clockwise.")
         .defaultValue(0)
-        .range(0, 359)
-        .sliderRange(0, 359)
+        .range(-359, 359)
+        .sliderRange(-359, 359)
+        .build()
+    );
+
+    private final Setting<Boolean> preventEndSquish = sgGeneral.add(new BoolSetting.Builder()
+        .name("prevent-squished-ends")
+        .description("Keeps the bar's top/bottom/left/right border pixels at a fixed, uniform thickness instead of stretching them along with the rest of the texture - without this, a large difference between Scale X and Scale Y visibly smears the border toward the bar's ends. Only matters when Scale X and Scale Y differ.")
+        .defaultValue(false)
         .build()
     );
 
@@ -91,6 +98,19 @@ public class VanillaXPBarHud extends HudElement {
 
     public double getScaleY() {
         return scaleY.get() * scale.get();
+    }
+
+    /** Raw Scale X/Scale Y multipliers (before Scale is folded in) - used by InGameHudMixin's border-thickness correction for Prevent Squished Ends. */
+    public double getRawScaleX() {
+        return scaleX.get();
+    }
+
+    public double getRawScaleY() {
+        return scaleY.get();
+    }
+
+    public boolean shouldPreventEndSquish() {
+        return preventEndSquish.get();
     }
 
     public int getRotation() {

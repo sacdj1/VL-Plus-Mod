@@ -59,8 +59,13 @@ public class ItemColorMapSettingScreen extends WindowScreen {
 
         WHorizontalList header = add(theme.horizontalList()).expandX().widget();
 
-        WTextBox filter = header.add(theme.textBox("")).minWidth(400).expandCellX().widget();
+        // Picking/removing an item above calls reload() (the full clear()+initWidgets(), not just
+        // a table refresh), which recreates this textbox too - starting it from the current
+        // filterText instead of a hardcoded "" keeps whatever you'd already typed instead of
+        // wiping it the moment you add or remove an item.
+        WTextBox filter = header.add(theme.textBox(filterText)).minWidth(400).expandCellX().widget();
         filter.setFocused(true);
+        filter.setCursorMax();
         filter.action = () -> {
             filterText = filter.get().trim();
 

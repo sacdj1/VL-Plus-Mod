@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.utils.misc;
 
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.entity.player.AttackEntityEvent;
 import meteordevelopment.meteorclient.events.render.RenderBossBarEvent;
 import meteordevelopment.meteorclient.mixin.ClientPlayerInteractionManagerAccessor;
 import meteordevelopment.meteorclient.mixin.MinecraftClientAccessor;
@@ -77,10 +78,28 @@ public class MeteorStarscript {
     // last-seen caches in this pack (e.g. Reader Notif's title/scoreboard dedup).
     private static String currentBossBarText = "";
 
+    public static String currentBossBarText() {
+        return currentBossBarText;
+    }
+
     private static final class BossBarListener {
         @EventHandler
         private void onBossBarText(RenderBossBarEvent.BossText event) {
             currentBossBarText = event.name.getString();
+        }
+    }
+
+    // Backs player.activity below - tracked independently of any particular module, same reasoning
+    // as currentBossBarText above, so Discord Presence (or anything else) gets this "for free"
+    // without needing some other module active just to produce it.
+    private static long lastCombatTime = 0;
+    private static String lastCombatTarget = "";
+
+    private static final class CombatListener {
+        @EventHandler
+        private void onAttackEntity(AttackEntityEvent event) {
+            lastCombatTime = System.currentTimeMillis();
+            lastCombatTarget = event.entity.getName().getString();
         }
     }
 
@@ -89,6 +108,7 @@ public class MeteorStarscript {
         StandardLib.init(ss);
 
         MeteorClient.EVENT_BUS.subscribe(new BossBarListener());
+        MeteorClient.EVENT_BUS.subscribe(new CombatListener());
 
         // General
         ss.set("mc_version", SharedConstants.getGameVersion().getName());
@@ -185,6 +205,8 @@ public class MeteorStarscript {
             .set("get_potion_effect", MeteorStarscript::getPotionEffect)
 
             .set("get_stat", MeteorStarscript::getStat)
+
+            .set("activity", MeteorStarscript::activity)
         );
 
         // Crosshair target
@@ -471,6 +493,29 @@ public class MeteorStarscript {
         else yaw = mc.player != null ? mc.player.getYaw() : 0;
 
         return wrap(HorizontalDirection.get(yaw));
+    }
+
+    // How long a landed/received hit still counts as "in combat" after the fact, so the activity
+    // doesn't flicker back to Exploring between individual swings of a real fight.
+    private static final long COMBAT_WINDOW_MS = 5000;
+
+    /** A human-readable guess at what the player is currently doing, for things like Discord Presence - "Fighting X" (recently attacked/been hit), else "Mining X" (actively breaking a block), else plain "Exploring". Deliberately doesn't fall back to the biome (e.g. "Exploring Plains") - not meaningful for Ventureland's own areas/zones, which {zone.current} already covers instead. */
+    private static Value activity() {
+        if (mc.player == null || mc.world == null) return Value.string("");
+
+        boolean recentlyHurt = mc.player.hurtTime > 0;
+        boolean recentlyAttacked = System.currentTimeMillis() - lastCombatTime <= COMBAT_WINDOW_MS;
+
+        if (recentlyHurt || recentlyAttacked) {
+            return Value.string(recentlyAttacked && !lastCombatTarget.isEmpty() ? "Fighting " + lastCombatTarget : "In Combat");
+        }
+
+        float breakingProgress = mc.interactionManager != null ? ((ClientPlayerInteractionManagerAccessor) mc.interactionManager).getBreakingProgress() : 0;
+        if (breakingProgress > 0 && mc.crosshairTarget instanceof BlockHitResult hit) {
+            return Value.string("Mining " + Names.get(mc.world.getBlockState(hit.getBlockPos()).getBlock()));
+        }
+
+        return Value.string("Exploring");
     }
 
     private static Value biome() {

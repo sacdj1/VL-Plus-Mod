@@ -144,6 +144,15 @@ public class NoRender extends Module {
         .defaultValue(false)
         .build()
     );
+
+    private final Setting<Boolean> crosshairInThirdPerson = sgHUD.add(new BoolSetting.Builder()
+        .name("crosshair-in-third-person")
+        .description("Shows the crosshair in third person too - vanilla only draws it in first person.")
+        .defaultValue(false)
+        .visible(() -> !noCrosshair.get())
+        .build()
+    );
+
     private final Setting<Boolean> noTitle = sgHUD.add(new BoolSetting.Builder()
         .name("title")
         .description("Disables rendering of the title.")
@@ -380,7 +389,7 @@ public class NoRender extends Module {
     );
 
     public NoRender() {
-        super(Categories.Render, "no-render", "Disables certain animations or overlays from rendering.");
+        super(Categories.Hud, "no-render", "Disables certain animations or overlays from rendering.");
 
         favorite = true;
     }
@@ -461,6 +470,9 @@ public class NoRender extends Module {
 
     public boolean noCrosshair() {
         return isActive() && noCrosshair.get();
+    }
+    public boolean crosshairInThirdPerson() {
+        return isActive() && crosshairInThirdPerson.get();
     }
     public boolean noTitle() {
         return isActive() && noTitle.get();

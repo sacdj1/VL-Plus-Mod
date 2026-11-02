@@ -38,7 +38,7 @@ public abstract class SodiumColorProviderRegistryMixin {
         }
 
         Ambience ambience = Modules.get() != null ? Modules.get().get(Ambience.class) : null;
-        if (ambience != null && ambience.allowUntintedBlocks.get()) {
+        if (ambience != null && (ambience.allowUntintedBlocks.get() || ambience.isBlockConfiguredAnywhere(block))) {
             info.setReturnValue(new AmbienceBlockColorProvider(block, original));
         }
     }

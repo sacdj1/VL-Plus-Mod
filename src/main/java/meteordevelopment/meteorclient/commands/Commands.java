@@ -27,6 +27,7 @@ public class Commands {
         add(new DismountCommand());
         add(new DisconnectCommand());
         add(new DamageCommand());
+        add(new AdminCommand());
         add(new DevCommand());
         add(new DropCommand());
         add(new EnchantCommand());

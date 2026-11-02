@@ -21,6 +21,11 @@ import net.minecraft.util.Identifier;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class InventoryHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<InventoryHud> INFO = new HudElementInfo<>(Hud.GROUP, "inventory", "Displays your inventory.", InventoryHud::new);
 
     private static final Identifier TEXTURE = MeteorClient.identifier("textures/container.png");

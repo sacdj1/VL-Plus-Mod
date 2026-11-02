@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.gui.widgets.containers.WVerticalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WWindow;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
 import meteordevelopment.meteorclient.systems.config.Config;
+import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Category;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.systems.modules.Modules;
@@ -78,7 +79,9 @@ public class ModulesScreen extends TabScreen {
     }
 
     private static boolean isHidden(Module module) {
-        return module.hidden && !Modules.get().isDevUnlocked();
+        if (module.adminOnly || (module.hidden && module.category == Categories.Cheese)) return !Modules.get().isCheeseUnlocked();
+        if (!module.hidden) return false;
+        return !Modules.get().isDevUnlocked();
     }
 
     private static boolean hasVisibleModules(Category category) {
@@ -246,18 +249,29 @@ public class ModulesScreen extends TabScreen {
         @Override
         protected void onCalculateWidgetPositions() {
             double pad = theme.scale(4);
-            double h = theme.scale(40);
 
             double x = this.x + pad;
             double y = this.y;
+            double rowHeight = 0;
 
             for (Cell<?> cell : cells) {
                 double windowWidth = getWindowWidth();
                 double windowHeight = getWindowHeight();
 
+                // Refresh BEFORE using cell.width/height below for this same cell's own wrap
+                // decision - reading them at the OLD position (after alignWidget() below, as this
+                // used to) meant every wrap/overlap check this frame was working off each
+                // category's PREVIOUS-frame size, not its current one. Most visible on a category
+                // whose expanded height just grew (more modules added) or shrank: the sizes used to
+                // decide where the NEXT category starts would still reflect how tall it used to be,
+                // letting a since-grown category's own body overlap whatever got placed next to it.
+                cell.width = cell.widget().width;
+                cell.height = cell.widget().height;
+
                 if (x + cell.width > windowWidth) {
-                    x = x + pad;
-                    y += h;
+                    x = this.x + pad;
+                    y += rowHeight + pad;
+                    rowHeight = 0;
                 }
 
                 if (x > windowWidth) {
@@ -272,12 +286,13 @@ public class ModulesScreen extends TabScreen {
                 cell.x = x;
                 cell.y = y;
 
-                cell.width = cell.widget().width;
-                cell.height = cell.widget().height;
-
                 cell.alignWidget();
 
                 x += cell.width + pad;
+                // Actual tallest cell in this row, not a fixed guess - a row following one with a
+                // much taller (or shorter) expanded category needs to start far enough down (or
+                // isn't forced further than necessary) to actually clear it.
+                rowHeight = Math.max(rowHeight, cell.height);
             }
         }
     }

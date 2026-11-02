@@ -67,7 +67,7 @@ public class Zoom extends Module {
     private double time;
 
     public Zoom() {
-        super(Categories.Render, "zoom", "Zooms your view.");
+        super(Categories.Camera, "zoom", "Zooms your view.");
         autoSubscribe = false;
     }
 

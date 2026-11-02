@@ -1,9 +1,8 @@
 plugins {
-    id "fabric-loom" version "1.7-SNAPSHOT"
-    id "maven-publish"
-    id "com.github.johnrengelman.shadow" version "8.1.1"
+    id 'fabric-loom' version '1.7.4'
+    id 'com.gradleup.shadow' version '8.3.6'
+    id 'maven-publish'
 }
-
 base {
     archivesBaseName = project.archives_base_name
     version = project.mod_version + (project.hasProperty("devbuild") ? ("-" + project.findProperty("devbuild")) : "")

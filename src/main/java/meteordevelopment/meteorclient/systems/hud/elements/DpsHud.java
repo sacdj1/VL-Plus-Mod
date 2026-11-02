@@ -6,7 +6,9 @@
 package meteordevelopment.meteorclient.systems.hud.elements;
 
 import meteordevelopment.meteorclient.MeteorClient;
+import meteordevelopment.meteorclient.events.entity.player.AttackEntityEvent;
 import meteordevelopment.meteorclient.events.packets.PacketEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.hud.Hud;
 import meteordevelopment.meteorclient.systems.hud.HudElement;
@@ -15,16 +17,27 @@ import meteordevelopment.meteorclient.systems.hud.HudRenderer;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
+import net.minecraft.component.DataComponentTypes;
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.attribute.EntityAttributes;
 import net.minecraft.entity.data.DataTracker;
 import net.minecraft.entity.decoration.ArmorStandEntity;
+import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.component.type.LoreComponent;
 import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
 import net.minecraft.text.Text;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -37,14 +50,28 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
  * purpose - see the "dps-meter-mc" project.
  */
 public class DpsHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<DpsHud> INFO = new HudElementInfo<>(Hud.GROUP, "dps-meter", "Tracks damage from invisible armor stand damage indicators and displays DPS.", DpsHud::new);
 
     private static final Pattern NUMBER_PATTERN = Pattern.compile("\\d+(?:\\.\\d+)?");
     private static final long DEDUP_WINDOW_MS = 500L;
 
-    public enum Mode {Solo, Team}
+    public enum Mode {Solo, Team, OnHit}
 
     private record DamageEvent(long time, float damage) {}
+
+    /** A recent attack/projectile-impact position - see Mode.OnHit. */
+    private record HitRecord(double x, double y, double z, long timeMs) {
+        boolean isNear(double ex, double ey, double ez, long now) {
+            if (now - timeMs > 800L) return false;
+            double dx = ex - x, dz = ez - z, dy = ey - y;
+            return dx * dx + dz * dz < 36.0 && Math.abs(dy) < 5.0;
+        }
+    }
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgBackground = settings.createGroup("Background");
@@ -52,7 +79,7 @@ public class DpsHud extends HudElement {
 
     private final Setting<Mode> mode = sgGeneral.add(new EnumSetting.Builder<Mode>()
         .name("mode")
-        .description("Solo only counts damage from armor stands near you, Team counts all of them.")
+        .description("Solo only counts damage from armor stands near you, Team counts all of them, On Hit only counts a damage number that shows up right after (and right where) you actually landed a hit - your own attacks and any projectile you fired that's disappeared (hit something).")
         .defaultValue(Mode.Solo)
         .build()
     );
@@ -64,6 +91,13 @@ public class DpsHud extends HudElement {
         .min(1)
         .sliderRange(1, 32)
         .visible(() -> mode.get() == Mode.Solo)
+        .build()
+    );
+
+    private final Setting<Boolean> vlMode = sgGeneral.add(new BoolSetting.Builder()
+        .name("vl-mode")
+        .description("Also filters by plausible damage range: your own Attack Damage attribute, adjusted by any \"+X% damage/dmg/atk/attack\" lines found in your armor's lore, times a wide margin either way to still allow crits/RNG - rejects a number way outside that as probably not yours. A heuristic, not exact - tell me if it's rejecting real hits or letting obvious outliers through and I'll adjust the margin.")
+        .defaultValue(false)
         .build()
     );
 
@@ -136,13 +170,57 @@ public class DpsHud extends HudElement {
         .build()
     );
 
+    private static final Pattern PERCENT_PATTERN = Pattern.compile("([+-]?\\d+(?:\\.\\d+)?)\\s*%");
+
     private final Deque<DamageEvent> events = new ArrayDeque<>();
     private final Map<Integer, Long> lastSeen = new HashMap<>();
+
+    // On Hit tracking
+    private final List<HitRecord> recentHits = new ArrayList<>();
+    private final Map<Integer, double[]> trackedProjectiles = new HashMap<>();
 
     public DpsHud() {
         super(INFO);
 
         MeteorClient.EVENT_BUS.subscribe(this);
+    }
+
+    // Your own melee attacks - the "you swung at it" half of On Hit mode.
+    @EventHandler
+    private void onAttack(AttackEntityEvent event) {
+        if (!isActive() || mode.get() != Mode.OnHit || event.entity == null) return;
+
+        recentHits.add(new HitRecord(event.entity.getX(), event.entity.getY(), event.entity.getZ(), System.currentTimeMillis()));
+    }
+
+    // Your own projectiles disappearing (hit something) - the ranged half of On Hit mode, plus
+    // pruning old hit records regardless of mode so the list never grows unbounded.
+    @EventHandler
+    private void onTick(TickEvent.Post event) {
+        long now = System.currentTimeMillis();
+        recentHits.removeIf(h -> now - h.timeMs() > 2000L);
+
+        if (!isActive() || mode.get() != Mode.OnHit || mc.world == null || mc.player == null) {
+            if (!trackedProjectiles.isEmpty()) trackedProjectiles.clear();
+            return;
+        }
+
+        Set<Integer> liveIds = new HashSet<>();
+        for (Entity e : mc.world.getEntities()) {
+            if (!(e instanceof ProjectileEntity proj) || !mc.player.equals(proj.getOwner())) continue;
+
+            liveIds.add(proj.getId());
+            trackedProjectiles.put(proj.getId(), new double[]{proj.getX(), proj.getY(), proj.getZ()});
+        }
+
+        // Any tracked projectile no longer in the world just hit something.
+        trackedProjectiles.keySet().removeIf(id -> {
+            if (liveIds.contains(id)) return false;
+
+            double[] pos = trackedProjectiles.get(id);
+            recentHits.add(new HitRecord(pos[0], pos[1], pos[2], System.currentTimeMillis()));
+            return true;
+        });
     }
 
     @EventHandler
@@ -151,11 +229,31 @@ public class DpsHud extends HudElement {
         if (!(event.packet instanceof EntityTrackerUpdateS2CPacket packet)) return;
 
         if (!(mc.world.getEntityById(packet.id()) instanceof ArmorStandEntity armorStand) || !armorStand.isInvisible()) return;
-        if (mode.get() == Mode.Solo && mc.player.squaredDistanceTo(armorStand) > range.get() * range.get()) return;
+
+        if (mode.get() == Mode.Solo) {
+            if (mc.player.squaredDistanceTo(armorStand) > range.get() * range.get()) return;
+        } else if (mode.get() == Mode.OnHit) {
+            long now = System.currentTimeMillis();
+            boolean matched = false;
+            for (HitRecord h : recentHits) {
+                if (h.isNear(armorStand.getX(), armorStand.getY(), armorStand.getZ(), now)) { matched = true; break; }
+            }
+            if (!matched) return;
+        }
+        // Team: no filter
+
+        double vlMin = 0, vlMax = Double.MAX_VALUE;
+        if (vlMode.get()) {
+            double base = mc.player.getAttributeValue(EntityAttributes.GENERIC_ATTACK_DAMAGE);
+            double effective = base * (1.0 + armorDamagePercent());
+            vlMin = effective * 0.2;
+            vlMax = effective * 4.0; // covers crits, enchants, RNG spikes
+        }
 
         for (DataTracker.SerializedEntry<?> entry : packet.trackedValues()) {
             Float damage = tryExtractDamage(entry);
             if (damage == null) continue;
+            if (vlMode.get() && (damage < vlMin || damage > vlMax)) continue;
 
             long now = System.currentTimeMillis();
             Long last = lastSeen.get(packet.id());
@@ -166,6 +264,34 @@ public class DpsHud extends HudElement {
 
             if (lastSeen.size() > 512) lastSeen.entrySet().removeIf(e -> now - e.getValue() > 10_000L);
         }
+    }
+
+    // Scans armor lore for ±X% damage modifiers (e.g. "+15% Damage", "-10% DMG"), summed across all
+    // armor slots - for VL Mode's plausible-damage-range estimate.
+    private double armorDamagePercent() {
+        double total = 0;
+
+        for (EquipmentSlot slot : EquipmentSlot.values()) {
+            if (slot.getType() != EquipmentSlot.Type.HUMANOID_ARMOR) continue;
+
+            ItemStack armor = mc.player.getEquippedStack(slot);
+            if (armor.isEmpty()) continue;
+
+            LoreComponent lore = armor.get(DataComponentTypes.LORE);
+            if (lore == null) continue;
+
+            for (Text line : lore.lines()) {
+                String text = line.getString().toLowerCase();
+                if (!text.contains("damage") && !text.contains("dmg") && !text.contains("atk") && !text.contains("attack")) continue;
+
+                Matcher m = PERCENT_PATTERN.matcher(text);
+                if (m.find()) {
+                    try { total += Double.parseDouble(m.group(1)) / 100.0; } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+
+        return total;
     }
 
     private static Float tryExtractDamage(DataTracker.SerializedEntry<?> entry) {
@@ -201,7 +327,7 @@ public class DpsHud extends HudElement {
         float dps = isInEditor() ? 12.3f : getDps();
 
         String label = "DPS: " + (dps >= 1000f ? String.format("%.2fk", dps / 1000f) : String.format("%.1f", dps));
-        if (showMode.get()) label += mode.get() == Mode.Solo ? " [S]" : " [T]";
+        if (showMode.get()) label += switch (mode.get()) { case Solo -> " [S]"; case Team -> " [T]"; case OnHit -> " [H]"; };
 
         double textW = renderer.textWidth(label, shadow.get(), getScale());
         double textH = renderer.textHeight(shadow.get(), getScale());

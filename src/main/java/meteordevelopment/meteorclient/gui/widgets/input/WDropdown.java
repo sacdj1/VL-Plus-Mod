@@ -107,9 +107,16 @@ public abstract class WDropdown<T> extends WPressable {
 
         if (!render && animProgress > 0) {
             renderer.absolutePost(() -> {
+                // try/finally so scissorEnd() always runs even if the expanded list's render() throws -
+                // see WWindow's own comment for the full explanation of this failure mode (an unguarded
+                // pair here leaves the GL scissor rect stuck clipped to this dropdown's tiny bounds,
+                // hiding every widget rendered after it until something else calls scissorStart() again).
                 renderer.scissorStart(x, y + height, width, root.height * animProgress);
-                root.render(renderer, mouseX, mouseY, delta);
-                renderer.scissorEnd();
+                try {
+                    root.render(renderer, mouseX, mouseY, delta);
+                } finally {
+                    renderer.scissorEnd();
+                }
             });
         }
 

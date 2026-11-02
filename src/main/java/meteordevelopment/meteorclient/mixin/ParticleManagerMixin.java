@@ -11,8 +11,18 @@ import meteordevelopment.meteorclient.events.world.ParticleEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.render.ParticleColor;
+import meteordevelopment.meteorclient.utils.render.SpriteAverageColor;
+import meteordevelopment.meteorclient.utils.render.VLLightOverrideParticle;
+import meteordevelopment.meteorclient.utils.render.VLOutlineParticle;
+import meteordevelopment.meteorclient.utils.render.VLRecolorableParticle;
 import meteordevelopment.meteorclient.utils.render.color.Color;
+import meteordevelopment.meteorclient.settings.ParticleRecolor;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.particle.ParticleTextureSheet;
+import net.minecraft.client.particle.SpriteBillboardParticle;
+import net.minecraft.client.texture.Sprite;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.particle.ParticleEffect;
@@ -57,6 +67,11 @@ public abstract class ParticleManagerMixin {
             return particle;
         }
 
+        if (particleColor.shouldPermClear(parameters)) {
+            ((ParticleAccessor) particle).invokeSetAlpha(0f);
+            return particle;
+        }
+
         if (particleColor.shouldHide(parameters, x, y, z)) {
             ((ParticleAccessor) particle).invokeSetAlpha(0f);
             return particle;
@@ -66,16 +81,142 @@ public abstract class ParticleManagerMixin {
             Color color = particleColor.getColor(parameters);
             ParticleAccessor accessor = (ParticleAccessor) particle;
 
-            // The color's own alpha is the blend strength against the particle's original color
-            // (0 = untouched, 255 = fully replaced), not the output alpha - overall opacity is a
-            // separate, independent setting.
-            float blend = color.a / 255f;
-            float r = accessor.getRed() + (color.r / 255f - accessor.getRed()) * blend;
-            float g = accessor.getGreen() + (color.g / 255f - accessor.getGreen()) * blend;
-            float b = accessor.getBlue() + (color.b / 255f - accessor.getBlue()) * blend;
+            // Every mode now applies the picked color at full strength (previously the color's own
+            // alpha silently scaled this down as a "blend strength" - 0 = untouched, 255 = fully
+            // applied - independent of the actual output opacity. That's not how anyone reads an
+            // alpha slider on a color picker, and any entry saved with anything under 255 alpha
+            // (the common case - most color pickers don't default to fully opaque) came out barely
+            // tinted or not visibly tinted at all, on every mode except Replace, which ignored alpha
+            // entirely and so looked like the only mode that actually worked). The entry's alpha is
+            // now just an opacity multiplier on the final particle, stacking with the separate
+            // Overall Alpha setting below - matching what an alpha slider normally means.
+            float tr = color.r / 255f, tg = color.g / 255f, tb = color.b / 255f;
+            float or = accessor.getRed(), og = accessor.getGreen(), ob = accessor.getBlue();
+
+            ParticleRecolor.Mode mode = particleColor.getRecolorMode(parameters);
+            particleColor.noteRecolor(parameters, mode, color, particleColor.isGeneral(parameters));
+
+            float r, g, b;
+            switch (mode) {
+                case Multiply -> { r = or * tr; g = og * tg; b = ob * tb; }
+                // Additive can't visibly brighten a channel that's already near-maximum (most
+                // particle textures/tints start close to white) - real limitation of the mode
+                // itself, not something to work around here.
+                case Add -> { r = Math.min(1f, or + tr); g = Math.min(1f, og + tg); b = Math.min(1f, ob + tb); }
+                // Colorize: corrects for the sprite's own average texture color before tinting, so a
+                // SATURATED pick (red, green, a specific brand color, ...) centers on that color
+                // instead of just darkening toward whatever hue the texture already leans - but how
+                // much correction to apply is scaled by the picked tint's OWN saturation, down to none
+                // at all for a picked color that's gray/white. Without that scaling, picking white
+                // still visibly changed the particle (boosting every channel that was below the
+                // texture's own average back up toward 1.0, which is "correct" by the average-matches-
+                // picked-color goal but not what anyone expects "white" to mean) - confirmed: picking
+                // white was still altering particles, not leaving them alone. Zero saturation now means
+                // zero correction, i.e. the tint is applied completely uncorrected (full strength,
+                // same as Replace/Blend) - and tinting with flat white IS the identity multiply against
+                // the real texture (texture * 1 = texture), so white now reproduces the particle's
+                // real, untouched appearance exactly, same as turning Particle Color off for it. Fully
+                // saturated tints get the full per-channel correction as before (see history below);
+                // partially-saturated tints blend smoothly between the two.
+                case Colorize -> {
+                    float[] avg = particle instanceof SpriteBillboardParticle spriteParticle
+                        ? SpriteAverageColor.get(((SpriteBillboardParticleAccessor) spriteParticle).getSprite())
+                        : new float[]{1f, 1f, 1f};
+
+                    // Per-channel correction, clamped independently rather than rescaled together -
+                    // scaling all three down together by whichever one overshoots most is what caused
+                    // the original version of this mode to send a saturated texture tinted pure white
+                    // toward magenta instead of white (every channel needed boosting toward white, and
+                    // the shared rescale dragged the ones needing LESS boost down along with the one
+                    // needing the most) - independent clamping keeps each channel's own boost up to its
+                    // own 1.0 ceiling instead. Moot for white specifically now (saturation 0 skips
+                    // correction entirely, see below), but still matters for partially-saturated tints.
+                    float correctedR = Math.min(1f, tr / avg[0]);
+                    float correctedG = Math.min(1f, tg / avg[1]);
+                    float correctedB = Math.min(1f, tb / avg[2]);
+
+                    float maxC = Math.max(tr, Math.max(tg, tb));
+                    float minC = Math.min(tr, Math.min(tg, tb));
+                    float saturation = maxC <= 0f ? 0f : (maxC - minC) / maxC;
+
+                    r = tr + (correctedR - tr) * saturation;
+                    g = tg + (correctedG - tg) * saturation;
+                    b = tb + (correctedB - tb) * saturation;
+                }
+                // Override(Outline): swaps in a neutral white sprite (so there's no texture of its own
+                // left to fight the tint) and tints from there, landing on the picked color exactly
+                // regardless of what the original texture looked like - the only mode that can
+                // actually make a picked color (including white) visibly readable on a non-white
+                // particle, since every OTHER mode keeps the real texture and a vertex-color multiply
+                // can only ever darken it, never brighten past what's already there (confirmed: white
+                // is the brightest possible multiply, i.e. exactly the identity - it reproduces the
+                // original texture unchanged, on any mode that doesn't discard the texture).
+                //
+                // The swap-to-neutral trick only works when the particle's sprite is on the SAME
+                // texture sheet as the neutral sprite (the block atlas, since WHITE_CONCRETE's model
+                // particle sprite lives there) - used to gate this on the SPAWNING ParticleEffect's own
+                // type (BlockStateParticleEffect/ItemStackParticleEffect), which is a proxy for "this
+                // probably renders via the block atlas" rather than the real thing. Checking the
+                // particle's actual ParticleTextureSheet (TERRAIN_SHEET = block atlas) directly is both
+                // more accurate and broader - still false (correctly) for genuinely particle-atlas-
+                // sheet particles (most environmental ones - smoke, flame, portal, soul, etc), which
+                // have no safe neutral sprite to swap to in this codebase today (the particle atlas
+                // doesn't have one registered the way the block atlas has WHITE_CONCRETE) - those fall
+                // through to the plain tint below, same ceiling as every texture-preserving mode.
+                case Override, OverrideOutline -> {
+                    if (particle instanceof SpriteBillboardParticle && particle.getType() == ParticleTextureSheet.TERRAIN_SHEET) {
+                        Sprite neutral = MinecraftClient.getInstance().getBlockRenderManager().getModels().getModelParticleSprite(Blocks.WHITE_CONCRETE.getDefaultState());
+                        ((SpriteBillboardParticleAccessor) particle).setSpriteDirect(neutral);
+                    }
+
+                    r = tr; g = tg; b = tb;
+                }
+                default -> { r = tr; g = tg; b = tb; } // Blend / Replace
+            }
+
+            // Pushes the final color away from (or toward) mid-gray, every mode - mainly meant for
+            // Colorize, where this is the only lever left to make the tint read stronger once the
+            // sprite-average correction above has already done what it can; a flat multiply can't
+            // brighten past the texture's own max, but THIS runs after that, on the already-resolved
+            // final color, so it can still push it further from gray in either direction.
+            float contrast = particleColor.getContrast();
+            if (contrast != 1f) {
+                r = Math.min(1f, Math.max(0f, 0.5f + (r - 0.5f) * contrast));
+                g = Math.min(1f, Math.max(0f, 0.5f + (g - 0.5f) * contrast));
+                b = Math.min(1f, Math.max(0f, 0.5f + (b - 0.5f) * contrast));
+            }
 
             particle.setColor(r, g, b);
-            accessor.invokeSetAlpha(particleColor.getOverallAlpha());
+
+            if (mode == ParticleRecolor.Mode.OverrideOutline && particle instanceof VLOutlineParticle outlined) {
+                outlined.vlplus$setOutline(1f - r, 1f - g, 1f - b, color.a / 255f);
+            } else if (particle instanceof VLOutlineParticle outlined) {
+                outlined.vlplus$clearOutline();
+            }
+            // Some particle types (DamageParticle/"redstone" hit particles included) animate their
+            // own red/green/blue every tick and would otherwise silently undo the line above within
+            // a few ticks - see DamageParticleMixin. Stash the target color so it gets reasserted
+            // every tick, for every particle type that implements the hook (currently just that one;
+            // more can opt in the same way if the same bug turns up elsewhere).
+            if (particle instanceof VLRecolorableParticle recolorable) recolorable.vlplus$setRecolor(r, g, b);
+
+            // Used to also multiply by the particle's OWN current alpha (accessor.getAlpha()), on
+            // top of these two - the idea being a particle that's already semi-transparent for its
+            // own reasons (a soft/faded sprite) keeps that relative transparency instead of getting
+            // flattened to one flat opacity. In practice that's a THIRD independent dimming factor
+            // stacking multiplicatively with Overall Alpha and this entry's own Alpha - for a
+            // particle type whose own native alpha is already well under 1 (soft/translucent
+            // particles, not full-opacity ones), the three multiplied together collapsed toward
+            // zero, rendering as a barely-there, near-black smudge regardless of what color/alpha
+            // was actually picked here - affecting semi-transparent particle types specifically,
+            // never the fully-opaque ones. Alpha is now set directly from just these two settings,
+            // same as every other channel here - full, direct control over the result instead of it
+            // being at the mercy of whatever alpha the particle happened to spawn with.
+            accessor.invokeSetAlpha(particleColor.getOverallAlpha() * (color.a / 255f));
+
+            if (particleColor.overrideLighting() && particle instanceof VLLightOverrideParticle lit) {
+                lit.vlplus$setLightOverride(particleColor.getPackedLightOverride());
+            }
         }
 
         return particle;

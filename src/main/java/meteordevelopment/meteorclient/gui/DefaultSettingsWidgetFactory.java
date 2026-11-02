@@ -78,6 +78,8 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         factories.put(FontFaceSetting.class, (table, setting) -> fontW(table, (FontFaceSetting) setting));
         factories.put(Vector3dSetting.class, (table, setting) -> vector3dW(table, (Vector3dSetting) setting));
         factories.put(ReaderRuleListSetting.class, (table, setting) -> readerRuleListW(table, (ReaderRuleListSetting) setting));
+        factories.put(QuickActionListSetting.class, (table, setting) -> quickActionListW(table, (QuickActionListSetting) setting));
+        factories.put(ItemDisplayOverrideListSetting.class, (table, setting) -> itemDisplayOverrideListW(table, (ItemDisplayOverrideListSetting) setting));
     }
 
     @Override
@@ -86,9 +88,12 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
         List<RemoveInfo> removeInfoList = new ArrayList<>();
 
-        // Add all settings
+        // Add all settings - sub-groups (group.parent != null) are skipped here and rendered nested
+        // inside their parent's own section instead, by group() itself.
         for (SettingGroup group : settings.groups) {
-            group(list, group, filter, removeInfoList);
+            if (group.parent != null) continue;
+
+            group(list, group, filter, removeInfoList, settings);
         }
 
         // Calculate width and set it as minimum width
@@ -108,7 +113,9 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         return 6;
     }
 
-    private void group(WVerticalList list, SettingGroup group, String filter, List<RemoveInfo> removeInfoList) {
+    private void group(WVerticalList list, SettingGroup group, String filter, List<RemoveInfo> removeInfoList, Settings settings) {
+        if (!group.visible.isVisible()) return;
+
         WSection section = list.add(theme.section(group.name, group.sectionExpanded)).expandX().widget();
         section.action = () -> group.sectionExpanded = section.isExpanded();
 
@@ -135,6 +142,12 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
         }
 
         if (removeInfo != null) removeInfoList.add(removeInfo);
+
+        // Sub-groups (see Settings.createSubGroup) - their own section nested inside this one,
+        // instead of sitting as another top-level section next to it.
+        for (SettingGroup child : settings.groups) {
+            if (child.parent == group) group(section, child, filter, removeInfoList, settings);
+        }
     }
 
     private static class RemoveInfo {
@@ -335,7 +348,7 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
     }
 
     private void particleColorMapW(WTable table, ParticleColorMapSetting setting) {
-        selectW(table, setting, () -> mc.setScreen(new ParticleColorMapSettingScreen(theme, setting)));
+        selectW(table, setting, () -> mc.setScreen(new ParticleColorMapSettingScreen(theme, setting, setting.colorsMatter)));
     }
 
     private void biomeBlockColorW(WTable table, BiomeBlockColorSetting setting) {
@@ -574,6 +587,14 @@ public class DefaultSettingsWidgetFactory extends SettingsWidgetFactory {
 
     private void readerRuleListW(WTable table, ReaderRuleListSetting setting) {
         selectW(table, setting, () -> mc.setScreen(new ReaderRuleListScreen(theme, setting)));
+    }
+
+    private void quickActionListW(WTable table, QuickActionListSetting setting) {
+        selectW(table, setting, () -> mc.setScreen(new QuickActionListScreen(theme, setting)));
+    }
+
+    private void itemDisplayOverrideListW(WTable table, ItemDisplayOverrideListSetting setting) {
+        selectW(table, setting, () -> mc.setScreen(new ItemDisplayOverrideListScreen(theme, setting)));
     }
 
     // Other

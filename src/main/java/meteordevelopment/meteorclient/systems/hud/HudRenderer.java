@@ -18,6 +18,7 @@ import meteordevelopment.meteorclient.renderer.text.CustomTextRenderer;
 import meteordevelopment.meteorclient.renderer.text.Font;
 import meteordevelopment.meteorclient.renderer.text.VanillaTextRenderer;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.render.ItemRenderAlphaState;
 import meteordevelopment.meteorclient.utils.render.RenderUtils;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.orbit.EventHandler;
@@ -80,8 +81,8 @@ public class HudRenderer {
         this.delta = Utils.frameTime;
 
         if (!hud.hasCustomFont()) {
-            VanillaTextRenderer.INSTANCE.scaleIndividually = true;
             VanillaTextRenderer.INSTANCE.begin();
+            VanillaTextRenderer.INSTANCE.scaleIndividually = true;
         }
     }
 
@@ -106,9 +107,11 @@ public class HudRenderer {
             }
         }
         else {
-            VanillaTextRenderer.INSTANCE.end();
-            VanillaTextRenderer.INSTANCE.scaleIndividually = false;
+            if (VanillaTextRenderer.INSTANCE.isBuilding()) VanillaTextRenderer.INSTANCE.end();
         }
+
+        // Unconditional: hasCustomFont() can change between begin() and end(), and a stuck flag scales every menu's text.
+        VanillaTextRenderer.INSTANCE.scaleIndividually = false;
 
         for (Runnable task : postTasks) task.run();
         postTasks.clear();
@@ -229,9 +232,35 @@ public class HudRenderer {
     }
 
     public void item(ItemStack itemStack, int x, int y, float scale, boolean overlay, String countOverlay) {
-        if (elementAlpha < 1.0) RenderSystem.setShaderColor(1f, 1f, 1f, (float) elementAlpha);
-        RenderUtils.drawItem(drawContext, itemStack, x, y, scale, overlay, countOverlay);
-        if (elementAlpha < 1.0) RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        boolean fading = elementAlpha < 1.0;
+
+        if (fading) {
+            RenderSystem.setShaderColor(1f, 1f, 1f, (float) elementAlpha);
+            ItemRenderAlphaState.forcingTranslucent = true;
+        }
+
+        try {
+            RenderUtils.drawItem(drawContext, itemStack, x, y, scale, overlay, countOverlay);
+
+            // drawItem() queues its draw calls in DrawContext rather than submitting them right
+            // away - left alone, they can flush later than our own text (drawn separately below
+            // through a completely different, immediately-flushed renderer), which then paints the
+            // item icon over text that was supposed to sit on top of it. Force it out now so the
+            // icon is always on the GPU before anything drawn after this call.
+            drawContext.draw();
+        } finally {
+            // try/finally, not a bare reset after the calls above - if either one throws (a
+            // misbehaving item renderer, same failure mode HudEditorScreen's own per-element
+            // try/catch already guards against elsewhere), forcingTranslucent/shader color used to
+            // stay stuck at whatever this call left them at. Any chest-family item rendered
+            // afterward (ChestBlockEntityRendererMixin forces translucent for those specifically)
+            // would then inherit that leftover alpha - invisible if it happened to be low, which is
+            // exactly how an ender chest could go invisible with nothing actually wrong with it.
+            if (fading) {
+                RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+                ItemRenderAlphaState.forcingTranslucent = false;
+            }
+        }
     }
 
     public void item(ItemStack itemStack, int x, int y, float scale, boolean overlay) {

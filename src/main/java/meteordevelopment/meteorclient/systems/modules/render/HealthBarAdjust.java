@@ -6,9 +6,11 @@
 package meteordevelopment.meteorclient.systems.modules.render;
 
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.gui.screens.settings.ColorRangeListScreen;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.misc.StatusColorOverrides;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
@@ -32,7 +34,9 @@ public class HealthBarAdjust extends Module {
         Gradient,
         Flashing,
         HueShift,
-        ByValue
+        ByValue,
+        ByValueRainbow,
+        ByValueRanges
     }
 
     public enum RainbowTransition {
@@ -44,6 +48,11 @@ public class HealthBarAdjust extends Module {
         Off,
         Permanent,
         FlashWhenReached
+    }
+
+    public enum ThresholdMode {
+        Percent,
+        Value
     }
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -66,6 +75,7 @@ public class HealthBarAdjust extends Module {
     private final SettingGroup sgFillGradient = settings.createGroup("Fill Color (Gradient / Flashing)");
     private final SettingGroup sgFillHueShift = settings.createGroup("Fill Color (Hue Shift)");
     private final SettingGroup sgFillByValue = settings.createGroup("Fill Color (By Value)");
+    private final StatusColorOverrides statusColors = new StatusColorOverrides(settings.createGroup("Status Effect Colors"));
 
     // Background Color
 
@@ -111,13 +121,31 @@ public class HealthBarAdjust extends Module {
         .build()
     );
 
+    private final Setting<ThresholdMode> maxThresholdMode = sgSpecialColors.add(new EnumSetting.Builder<ThresholdMode>()
+        .name("max-health-threshold-mode")
+        .description("Whether the threshold below is a percent of max health, or a specific absolute health value - useful on servers where max health goes well above the vanilla 20 (10 hearts).")
+        .defaultValue(ThresholdMode.Percent)
+        .visible(maxHealthColorEnabled::get)
+        .build()
+    );
+
     private final Setting<Integer> maxHealthThreshold = sgSpecialColors.add(new IntSetting.Builder()
         .name("max-health-threshold")
         .description("Health percent at/above which the max-health color applies. 100 = only exactly full, same as before this was adjustable - lower it to trigger a bit before completely full.")
         .defaultValue(100)
         .range(1, 100)
         .sliderRange(1, 100)
-        .visible(maxHealthColorEnabled::get)
+        .visible(() -> maxHealthColorEnabled.get() && maxThresholdMode.get() == ThresholdMode.Percent)
+        .build()
+    );
+
+    private final Setting<Integer> maxThresholdValue = sgSpecialColors.add(new IntSetting.Builder()
+        .name("max-health-threshold-value")
+        .description("Health value at/above which the max-health color applies, when the mode above is Value instead of Percent.")
+        .defaultValue(20)
+        .min(0)
+        .sliderRange(0, 200)
+        .visible(() -> maxHealthColorEnabled.get() && maxThresholdMode.get() == ThresholdMode.Value)
         .build()
     );
 
@@ -136,13 +164,31 @@ public class HealthBarAdjust extends Module {
         .build()
     );
 
+    private final Setting<ThresholdMode> lowThresholdMode = sgSpecialColors.add(new EnumSetting.Builder<ThresholdMode>()
+        .name("low-health-threshold-mode")
+        .description("Whether the threshold below is a percent of max health, or a specific absolute health value.")
+        .defaultValue(ThresholdMode.Percent)
+        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached)
+        .build()
+    );
+
     private final Setting<Integer> lowHealthThreshold = sgSpecialColors.add(new IntSetting.Builder()
         .name("low-health-threshold")
         .description("Health percent at/below which the low-health color flashes (vanilla's own hunger shake kicks in at 3 legs of meat = 6/20 = 30%, if you want an equivalent feel here). Only used by Flash When Reached - Permanent has no threshold, it's just always on.")
         .defaultValue(30)
         .range(0, 100)
         .sliderRange(0, 100)
-        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached)
+        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowThresholdMode.get() == ThresholdMode.Percent)
+        .build()
+    );
+
+    private final Setting<Integer> lowThresholdValue = sgSpecialColors.add(new IntSetting.Builder()
+        .name("low-health-threshold-value")
+        .description("Health value at/below which the low-health color flashes, when the mode above is Value instead of Percent.")
+        .defaultValue(6)
+        .min(0)
+        .sliderRange(0, 200)
+        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowThresholdMode.get() == ThresholdMode.Value)
         .build()
     );
 
@@ -258,17 +304,45 @@ public class HealthBarAdjust extends Module {
 
     private final Setting<SettingColor> backgroundHighColor = sgBackgroundByValue.add(new ColorSetting.Builder()
         .name("background-high-value-color")
-        .description("Color at full health - blends toward Low Value Color below as health drops.")
+        .description("Color at full health - blends toward Mid Value Color below as health drops.")
         .defaultValue(new SettingColor(25, 100, 25))
+        .visible(() -> backgroundMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<SettingColor> backgroundMidColor = sgBackgroundByValue.add(new ColorSetting.Builder()
+        .name("background-mid-value-color")
+        .description("Color at half health - blends between Background High Value Color above and Background Low Value Color below.")
+        .defaultValue(new SettingColor(100, 55, 10))
         .visible(() -> backgroundMode.get() == ColorMode.ByValue)
         .build()
     );
 
     private final Setting<SettingColor> backgroundLowColor = sgBackgroundByValue.add(new ColorSetting.Builder()
         .name("background-low-value-color")
-        .description("Color at zero health - Background High Value Color above blends toward this as health drops.")
+        .description("Color at zero health - Background Mid Value Color above blends toward this as health drops.")
         .defaultValue(new SettingColor(100, 25, 25))
         .visible(() -> backgroundMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    // Background Color (By Value Ranges) - unlike By Value above (a smooth blend across the whole
+    // range), this picks a hard, un-blended color per band of real health points you define
+    // yourself, e.g. "red below 10, yellow 10-20, green above that".
+
+    private final Setting<List<ColorRangeEntry>> backgroundRanges = sgBackgroundByValue.add(new ColorRangeListSetting.Builder()
+        .name("background-value-ranges")
+        .description("Each band's own health-point cutoff and color - see Edit Ranges below.")
+        .visible(() -> backgroundMode.get() == ColorMode.ByValueRanges)
+        .build()
+    );
+
+    private final Setting<Void> backgroundRangesEdit = sgBackgroundByValue.add(new ButtonSetting.Builder()
+        .name("background-value-ranges-edit")
+        .description("Add/edit/remove the health-point bands above.")
+        .buttonText("Edit Ranges")
+        .screen(theme -> new ColorRangeListScreen(theme, "Background", backgroundRanges.get(), mc.player != null ? mc.player.getMaxHealth() : 20))
+        .visible(() -> backgroundMode.get() == ColorMode.ByValueRanges)
         .build()
     );
 
@@ -364,17 +438,43 @@ public class HealthBarAdjust extends Module {
 
     private final Setting<SettingColor> fillHighColor = sgFillByValue.add(new ColorSetting.Builder()
         .name("fill-high-value-color")
-        .description("Color at full health - blends toward Low Value Color below as health drops.")
+        .description("Color at full health - blends toward Mid Value Color below as health drops.")
         .defaultValue(new SettingColor(60, 220, 60))
+        .visible(() -> fillMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<SettingColor> fillMidColor = sgFillByValue.add(new ColorSetting.Builder()
+        .name("fill-mid-value-color")
+        .description("Color at half health - blends between Fill High Value Color above and Fill Low Value Color below.")
+        .defaultValue(new SettingColor(255, 140, 0))
         .visible(() -> fillMode.get() == ColorMode.ByValue)
         .build()
     );
 
     private final Setting<SettingColor> fillLowColor = sgFillByValue.add(new ColorSetting.Builder()
         .name("fill-low-value-color")
-        .description("Color at zero health - Fill High Value Color above blends toward this as health drops.")
+        .description("Color at zero health - Fill Mid Value Color above blends toward this as health drops.")
         .defaultValue(new SettingColor(220, 30, 30))
         .visible(() -> fillMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    // Fill Color (By Value Ranges) - see Background Color (By Value Ranges) above for the same idea.
+
+    private final Setting<List<ColorRangeEntry>> fillRanges = sgFillByValue.add(new ColorRangeListSetting.Builder()
+        .name("fill-value-ranges")
+        .description("Each band's own health-point cutoff and color - see Edit Ranges below.")
+        .visible(() -> fillMode.get() == ColorMode.ByValueRanges)
+        .build()
+    );
+
+    private final Setting<Void> fillRangesEdit = sgFillByValue.add(new ButtonSetting.Builder()
+        .name("fill-value-ranges-edit")
+        .description("Add/edit/remove the health-point bands above.")
+        .buttonText("Edit Ranges")
+        .screen(theme -> new ColorRangeListScreen(theme, "Fill", fillRanges.get(), mc.player != null ? mc.player.getMaxHealth() : 20))
+        .visible(() -> fillMode.get() == ColorMode.ByValueRanges)
         .build()
     );
 
@@ -382,7 +482,7 @@ public class HealthBarAdjust extends Module {
     private int lowFlashTicksRemaining = 0;
 
     public HealthBarAdjust() {
-        super(Categories.Render, "health-bar-adjust", "Colors the real hearts and/or Health Bar HUD - Fixed, or an animated mode independent of health, plus distinct Max/Low health colors.");
+        super(Categories.Hud, "health-bar-adjust", "Colors the real hearts and/or Health Bar HUD - Fixed, or an animated mode independent of health, plus distinct Max/Low health colors.");
     }
 
     @Override
@@ -396,7 +496,7 @@ public class HealthBarAdjust extends Module {
         if (mc.player == null || lowHealthMode.get() != LowHealthMode.FlashWhenReached) return;
 
         float progress = mc.player.getMaxHealth() > 0 ? mc.player.getHealth() / mc.player.getMaxHealth() : 0;
-        boolean above = progress > lowHealthThreshold.get() / 100.0;
+        boolean above = progress > lowThresholdFraction();
 
         if (!above && wasAboveLowThreshold) lowFlashTicksRemaining = lowHealthFlashDuration.get();
         wasAboveLowThreshold = above;
@@ -408,6 +508,21 @@ public class HealthBarAdjust extends Module {
         return alpha.get() / 255.0;
     }
 
+    /** Low/Max Health Color's threshold, as a 0-1 fraction of real max health - either a direct percent, or an absolute health value divided by the player's actual current max health (so it still tracks correctly on servers where max health isn't the vanilla 20). */
+    private double lowThresholdFraction() {
+        if (lowThresholdMode.get() == ThresholdMode.Percent) return lowHealthThreshold.get() / 100.0;
+
+        float maxHealth = mc.player != null ? mc.player.getMaxHealth() : 20f;
+        return maxHealth > 0 ? lowThresholdValue.get() / maxHealth : 0;
+    }
+
+    private double maxThresholdFraction() {
+        if (maxThresholdMode.get() == ThresholdMode.Percent) return maxHealthThreshold.get() / 100.0;
+
+        float maxHealth = mc.player != null ? mc.player.getMaxHealth() : 20f;
+        return maxHealth > 0 ? maxThresholdValue.get() / maxHealth : 1;
+    }
+
     /** progress: current/max health, 0-1 - used by By Value mode below (a smooth blend, unlike the hard-cutoff Max/Low Health Color, which only applies to Fill). */
     public Color getBackgroundColor(Color fallback, float progress) {
         return switch (backgroundMode.get()) {
@@ -416,13 +531,18 @@ public class HealthBarAdjust extends Module {
             case Gradient -> gradientColor(backgroundGradientColors.get(), backgroundGradientSpeed.get());
             case Flashing -> flashColor(backgroundFlashColors.get(), fallback);
             case HueShift -> hueShiftColor(backgroundHueShiftBaseColor.get(), backgroundHueShiftSpeed.get(), backgroundHueShiftRange.get());
-            case ByValue -> byValueColor(backgroundHighColor.get(), backgroundLowColor.get(), progress);
+            case ByValue -> byValueColor(backgroundHighColor.get(), backgroundMidColor.get(), backgroundLowColor.get(), progress);
+            case ByValueRainbow -> byValueRainbowColor(progress);
+            case ByValueRanges -> rangesColor(backgroundRanges.get());
         };
     }
 
     /** progress: current/max health, 0-1 - used for the Max/Low health color overrides below (hard cutoffs), which take priority over Fill Mode, and for By Value mode (a smooth blend across the whole range instead). */
     public Color getFillColor(Color fallback, float progress) {
-        if (maxHealthColorEnabled.get() && progress >= maxHealthThreshold.get() / 100.0) return maxHealthColor.get();
+        Color statusColor = statusColors.get();
+        if (statusColor != null) return statusColor;
+
+        if (maxHealthColorEnabled.get() && progress >= maxThresholdFraction()) return maxHealthColor.get();
 
         if (lowHealthMode.get() == LowHealthMode.Permanent) return lowHealthColor.get();
         if (lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowFlashTicksRemaining > 0) return lowHealthColor.get();
@@ -433,19 +553,31 @@ public class HealthBarAdjust extends Module {
             case Gradient -> gradientColor(fillGradientColors.get(), fillGradientSpeed.get());
             case Flashing -> flashColor(fillFlashColors.get(), fallback);
             case HueShift -> hueShiftColor(fillHueShiftBaseColor.get(), fillHueShiftSpeed.get(), fillHueShiftRange.get());
-            case ByValue -> byValueColor(fillHighColor.get(), fillLowColor.get(), progress);
+            case ByValue -> byValueColor(fillHighColor.get(), fillMidColor.get(), fillLowColor.get(), progress);
+            case ByValueRainbow -> byValueRainbowColor(progress);
+            case ByValueRanges -> rangesColor(fillRanges.get());
         };
     }
 
-    /** Linear blend from lowColor (progress 0) to highColor (progress 1) - "one color at high health, another at low health". */
-    private Color byValueColor(SettingColor highColor, SettingColor lowColor, float progress) {
+    /** By Value Ranges - a hard, un-blended color per user-defined band of real health points. */
+    private Color rangesColor(List<ColorRangeEntry> ranges) {
+        double health = mc.player != null ? mc.player.getHealth() : 0;
+        return ColorRangeEntry.resolve(ranges, health, Color.WHITE);
+    }
+
+    /** Piecewise-linear blend through three colors - lowColor at progress 0, midColor at 0.5, highColor at 1. */
+    private Color byValueColor(SettingColor highColor, SettingColor midColor, SettingColor lowColor, float progress) {
         float t = MathHelper.clamp(progress, 0f, 1f);
+        boolean upper = t >= 0.5f;
+        SettingColor from = upper ? midColor : lowColor;
+        SettingColor to = upper ? highColor : midColor;
+        float k = upper ? (t - 0.5f) * 2f : t * 2f;
 
         return new Color(
-            (int) (lowColor.r + (highColor.r - lowColor.r) * t),
-            (int) (lowColor.g + (highColor.g - lowColor.g) * t),
-            (int) (lowColor.b + (highColor.b - lowColor.b) * t),
-            (int) (lowColor.a + (highColor.a - lowColor.a) * t)
+            (int) (from.r + (to.r - from.r) * k),
+            (int) (from.g + (to.g - from.g) * k),
+            (int) (from.b + (to.b - from.b) * k),
+            (int) (from.a + (to.a - from.a) * k)
         );
     }
 
@@ -515,5 +647,10 @@ public class HealthBarAdjust extends Module {
         Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
         color.a = base.a;
         return color;
+    }
+
+    /** "By Value Rainbow": the whole rainbow mapped onto the value - red at 0 sweeping through to violet at full. */
+    private Color byValueRainbowColor(float progress) {
+        return Color.fromHsv(MathHelper.clamp(progress, 0f, 1f) * 300.0, 1, 1);
     }
 }

@@ -95,12 +95,20 @@ public abstract class WSection extends WVerticalList {
             invalidate();
         }
 
-        boolean scissor = (animProgress != 0 && animProgress != 1) || (expanded && animProgress != 1);
-        if (scissor) renderer.scissorStart(x, y, width, (height - header.height) * animProgress + header.height);
-        boolean toReturn = super.render(renderer, mouseX, mouseY, delta);
-        if (scissor) renderer.scissorEnd();
-
-        return toReturn;
+        // Always scissored to this section's own bounds now, not just while animating - same bug,
+        // same fix as WWindow.render(): a fully expanded, non-animating section used to skip
+        // scissorStart/scissorEnd entirely, which also skips GuiRenderer's flush pair, letting its
+        // queued text pile into whatever LATER section/window happens to force a flush instead of
+        // its own. Harmless to always scissor - height is computed from the content, so it already
+        // fits exactly.
+        // try/finally so scissorEnd() always runs even if a child widget's render() throws - see
+        // WWindow.render()'s own note; the same unguarded pairing here caused the identical failure.
+        renderer.scissorStart(x, y, width, (height - header.height) * animProgress + header.height);
+        try {
+            return super.render(renderer, mouseX, mouseY, delta);
+        } finally {
+            renderer.scissorEnd();
+        }
     }
 
     @Override

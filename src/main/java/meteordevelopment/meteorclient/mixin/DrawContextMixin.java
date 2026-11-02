@@ -36,6 +36,12 @@ import java.util.function.Consumer;
 
 @Mixin(value = DrawContext.class)
 public abstract class DrawContextMixin implements IDrawContext {
+    // Whether each in-flight HEAD hook actually pushed a matrix, popped by the matching TAIL hook -
+    // instead of re-reading the shared rotation flag at TAIL, which can differ from what HEAD saw and
+    // pop a matrix that was never pushed (corrupting the shared stack for everything drawn after).
+    @org.spongepowered.asm.mixin.Unique
+    private final java.util.ArrayDeque<Boolean> vlPlusPushed = new java.util.ArrayDeque<>();
+
     @Inject(method = "drawTooltip(Lnet/minecraft/client/font/TextRenderer;Ljava/util/List;Ljava/util/Optional;II)V", at = @At(value = "INVOKE", target = "Ljava/util/Optional;ifPresent(Ljava/util/function/Consumer;)V", shift = At.Shift.BEFORE), locals = LocalCapture.CAPTURE_FAILHARD)
     private void onDrawTooltip(TextRenderer textRenderer, List<Text> text, Optional<TooltipData> data, int x, int y, CallbackInfo ci, List<TooltipComponent> list) {
         if (data.isPresent() && data.get() instanceof MeteorTooltipData meteorTooltipData)
@@ -59,11 +65,12 @@ public abstract class DrawContextMixin implements IDrawContext {
     @Inject(method = "drawItemInSlot(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/item/ItemStack;IILjava/lang/String;)V", at = @At("HEAD"))
     private void onDrawItemInSlotRotationHead(TextRenderer textRenderer, ItemStack stack, int x, int y, @Nullable String countOverride, CallbackInfo ci) {
         double angle = VanillaHudRotationState.hotbarItemCounterRotation;
-        if (angle == 0) return;
+        if (angle == 0) { vlPlusPushed.push(false); return; }
 
         MatrixStack matrices = ((DrawContext) (Object) this).getMatrices();
         double centerX = x + 8, centerY = y + 8;
 
+        vlPlusPushed.push(true);
         matrices.push();
         matrices.translate(centerX, centerY, 0);
         matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) angle));
@@ -80,11 +87,12 @@ public abstract class DrawContextMixin implements IDrawContext {
     @Inject(method = "drawItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;III)V", at = @At("HEAD"))
     private void onDrawItemIconRotationHead(net.minecraft.entity.LivingEntity entity, ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
         double angle = VanillaHudRotationState.hotbarItemCounterRotation;
-        if (angle == 0) return;
+        if (angle == 0) { vlPlusPushed.push(false); return; }
 
         MatrixStack matrices = ((DrawContext) (Object) this).getMatrices();
         double centerX = x + 8, centerY = y + 8;
 
+        vlPlusPushed.push(true);
         matrices.push();
         matrices.translate(centerX, centerY, 0);
         matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) angle));
@@ -93,7 +101,7 @@ public abstract class DrawContextMixin implements IDrawContext {
 
     @Inject(method = "drawItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;III)V", at = @At("TAIL"))
     private void onDrawItemIconRotationTail(net.minecraft.entity.LivingEntity entity, ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
-        if (VanillaHudRotationState.hotbarItemCounterRotation != 0) ((DrawContext) (Object) this).getMatrices().pop();
+        if (!vlPlusPushed.isEmpty() && vlPlusPushed.pop()) ((DrawContext) (Object) this).getMatrices().pop();
     }
 
     // Armor/Health/Hunger/MountHealth's Keep Sprites Upright: all four route every icon they draw
@@ -107,11 +115,12 @@ public abstract class DrawContextMixin implements IDrawContext {
     @Inject(method = "drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", at = @At("HEAD"))
     private void onDrawGuiTextureRotationHead(Identifier texture, int x, int y, int width, int height, CallbackInfo ci) {
         double angle = VanillaHudRotationState.statusBarSpriteCounterRotation;
-        if (angle == 0) return;
+        if (angle == 0) { vlPlusPushed.push(false); return; }
 
         MatrixStack matrices = ((DrawContext) (Object) this).getMatrices();
         double centerX = x + width / 2.0, centerY = y + height / 2.0;
 
+        vlPlusPushed.push(true);
         matrices.push();
         matrices.translate(centerX, centerY, 0);
         matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) angle));
@@ -120,7 +129,7 @@ public abstract class DrawContextMixin implements IDrawContext {
 
     @Inject(method = "drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", at = @At("TAIL"))
     private void onDrawGuiTextureRotationTail(Identifier texture, int x, int y, int width, int height, CallbackInfo ci) {
-        if (VanillaHudRotationState.statusBarSpriteCounterRotation != 0) ((DrawContext) (Object) this).getMatrices().pop();
+        if (!vlPlusPushed.isEmpty() && vlPlusPushed.pop()) ((DrawContext) (Object) this).getMatrices().pop();
     }
 
     // Item Info: badges are drawn on top of every slot-rendered item (hotbar and inventory
@@ -138,7 +147,7 @@ public abstract class DrawContextMixin implements IDrawContext {
     // class run in declaration order).
     @Inject(method = "drawItemInSlot(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/item/ItemStack;IILjava/lang/String;)V", at = @At("TAIL"))
     private void onDrawItemInSlotRotationTail(TextRenderer textRenderer, ItemStack stack, int x, int y, @Nullable String countOverride, CallbackInfo ci) {
-        if (VanillaHudRotationState.hotbarItemCounterRotation != 0) ((DrawContext) (Object) this).getMatrices().pop();
+        if (!vlPlusPushed.isEmpty() && vlPlusPushed.pop()) ((DrawContext) (Object) this).getMatrices().pop();
     }
 
     @ModifyExpressionValue(method = "drawItemInSlot(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/item/ItemStack;IILjava/lang/String;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/item/ItemStack;isItemBarVisible()Z"))
@@ -154,7 +163,7 @@ public abstract class DrawContextMixin implements IDrawContext {
         if (!module.isActive()) return original;
 
         ItemInfo.QualityInfo info = module.getDurabilityBarOverride(stack);
-        return info != null ? module.getBarStep(info) : original;
+        return info != null ? module.getBarStep(stack, info) : original;
     }
 
     @ModifyExpressionValue(method = "drawItemInSlot(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/item/ItemStack;IILjava/lang/String;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/item/ItemStack;getItemBarColor()I"))

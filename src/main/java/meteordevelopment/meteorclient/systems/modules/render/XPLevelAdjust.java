@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.modules.render;
 
+import meteordevelopment.meteorclient.gui.screens.settings.ColorRangeListScreen;
 import meteordevelopment.meteorclient.renderer.text.FontFace;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
@@ -29,7 +30,8 @@ public class XPLevelAdjust extends Module {
         Gradient,
         Flashing,
         HueShift,
-        ByValue
+        ByValue,
+        ByValueRanges
     }
 
     public enum RainbowTransition {
@@ -51,6 +53,14 @@ public class XPLevelAdjust extends Module {
         Custom
     }
 
+    public enum MaxColorMode {
+        Fixed,
+        Rainbow,
+        Gradient,
+        Flashing,
+        HueShift
+    }
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgRainbow = settings.createGroup("Rainbow");
     private final SettingGroup sgGradient = settings.createGroup("Gradient / Flashing");
@@ -58,6 +68,9 @@ public class XPLevelAdjust extends Module {
     private final SettingGroup sgByValue = settings.createGroup("By Value");
     private final SettingGroup sgZero = settings.createGroup("On Zero");
     private final SettingGroup sgMax = settings.createGroup("Max Level");
+    private final SettingGroup sgMaxRainbow = settings.createGroup("Max Level Color (Rainbow)");
+    private final SettingGroup sgMaxGradient = settings.createGroup("Max Level Color (Gradient / Flashing)");
+    private final SettingGroup sgMaxHueShift = settings.createGroup("Max Level Color (Hue Shift)");
     private final SettingGroup sgFont = settings.createGroup("Font");
 
     // General
@@ -206,6 +219,22 @@ public class XPLevelAdjust extends Module {
         .build()
     );
 
+    private final Setting<List<ColorRangeEntry>> valueRanges = sgByValue.add(new ColorRangeListSetting.Builder()
+        .name("value-ranges")
+        .description("Each band's own level cutoff and color - a hard un-blended color per band instead of the smooth gradient above. See Edit Ranges below.")
+        .visible(() -> colorMode.get() == ColorMode.ByValueRanges)
+        .build()
+    );
+
+    private final Setting<Void> valueRangesEdit = sgByValue.add(new ButtonSetting.Builder()
+        .name("value-ranges-edit")
+        .description("Add/edit/remove the level bands above.")
+        .buttonText("Edit Ranges")
+        .screen(theme -> new ColorRangeListScreen(theme, "Color", valueRanges.get(), this.maxLevel.get()))
+        .visible(() -> colorMode.get() == ColorMode.ByValueRanges)
+        .build()
+    );
+
     // On Zero
 
     private final Setting<ZeroBehavior> zeroBehavior = sgZero.add(new EnumSetting.Builder<ZeroBehavior>()
@@ -259,11 +288,107 @@ public class XPLevelAdjust extends Module {
         .build()
     );
 
+    private final Setting<MaxColorMode> maxColorMode = sgMax.add(new EnumSetting.Builder<MaxColorMode>()
+        .name("max-color-mode")
+        .description("How the forced max-level color is picked, once the level is within Max Level Range of Max Level.")
+        .defaultValue(MaxColorMode.Fixed)
+        .visible(highlightMax::get)
+        .build()
+    );
+
     private final Setting<SettingColor> maxColor = sgMax.add(new ColorSetting.Builder()
         .name("max-color")
-        .description("Color forced once the level is within Max Level Range of Max Level.")
+        .description("Color forced once the level is within Max Level Range of Max Level, when Max Color Mode above is Fixed.")
         .defaultValue(new SettingColor(255, 215, 0))
-        .visible(highlightMax::get)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Fixed)
+        .build()
+    );
+
+    // Max Level Color (Rainbow)
+
+    private final Setting<RainbowTransition> maxRainbowTransition = sgMaxRainbow.add(new EnumSetting.Builder<RainbowTransition>()
+        .name("transition")
+        .description("Soft smoothly cycles through every hue. Hard jumps between a fixed set of hues with no blending.")
+        .defaultValue(RainbowTransition.Soft)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Rainbow)
+        .build()
+    );
+
+    private final Setting<Integer> maxRainbowSteps = sgMaxRainbow.add(new IntSetting.Builder()
+        .name("hard-steps")
+        .description("How many distinct hues to jump between, in Hard mode.")
+        .defaultValue(6)
+        .min(2)
+        .sliderRange(2, 16)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Rainbow && maxRainbowTransition.get() == RainbowTransition.Hard)
+        .build()
+    );
+
+    private final Setting<Double> maxRainbowSpeed = sgMaxRainbow.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the rainbow cycles.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Rainbow)
+        .build()
+    );
+
+    // Max Level Color (Gradient / Flashing)
+
+    private final Setting<List<SettingColor>> maxGradientColors = sgMaxGradient.add(new ColorListSetting.Builder()
+        .name("colors")
+        .description("The colors to cycle between. Needs at least 2.")
+        .defaultValue(List.of(new SettingColor(255, 215, 0), new SettingColor(255, 255, 255)))
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<Double> maxGradientSpeed = sgMaxGradient.add(new DoubleSetting.Builder()
+        .name("gradient-speed")
+        .description("How fast the gradient cycles.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Gradient)
+        .build()
+    );
+
+    private final Setting<List<TimedColorEntry>> maxFlashColors = sgMaxGradient.add(new TimedColorListSetting.Builder()
+        .name("flash-colors")
+        .description("The colors to hard-switch between, each with its own hold duration in game ticks. Needs at least 2.")
+        .defaultValue(List.of(new TimedColorEntry(new SettingColor(255, 215, 0), 10), new TimedColorEntry(new SettingColor(255, 255, 255), 10)))
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.Flashing)
+        .build()
+    );
+
+    // Max Level Color (Hue Shift)
+
+    private final Setting<SettingColor> maxHueShiftBaseColor = sgMaxHueShift.add(new ColorSetting.Builder()
+        .name("base-color")
+        .description("Starting color - its hue continuously rotates, keeping its saturation/brightness/alpha.")
+        .defaultValue(new SettingColor(255, 215, 0))
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> maxHueShiftSpeed = sgMaxHueShift.add(new DoubleSetting.Builder()
+        .name("speed")
+        .description("How fast the hue rotates.")
+        .defaultValue(1)
+        .min(0.1)
+        .sliderRange(0.1, 10)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.HueShift)
+        .build()
+    );
+
+    private final Setting<Double> maxHueShiftRange = sgMaxHueShift.add(new DoubleSetting.Builder()
+        .name("range")
+        .description("How far the hue swings from the base color, in degrees each direction. 180 = swings the full way around.")
+        .defaultValue(30)
+        .range(0, 180)
+        .sliderRange(0, 180)
+        .visible(() -> highlightMax.get() && maxColorMode.get() == MaxColorMode.HueShift)
         .build()
     );
 
@@ -302,7 +427,7 @@ public class XPLevelAdjust extends Module {
     );
 
     public XPLevelAdjust() {
-        super(Categories.Render, "xp-level-adjust", "Recolors/restyles the vanilla XP level number - useful on servers that repurpose it, or just to make it stand out.");
+        super(Categories.Hud, "xp-level-adjust", "Recolors/restyles the vanilla XP level number - useful on servers that repurpose it, or just to make it stand out.");
     }
 
     public boolean isHidden(int level) {
@@ -348,15 +473,26 @@ public class XPLevelAdjust extends Module {
         boolean atZero = level <= 0;
 
         if (atZero && zeroBehavior.get() == ZeroBehavior.DistinctColor) return zeroColor.get();
-        if (highlightMax.get() && isAtMax(level)) return maxColor.get();
+        if (highlightMax.get() && isAtMax(level)) return getMaxColor();
 
         return switch (colorMode.get()) {
             case Static -> staticColor.get();
-            case Rainbow -> getRainbowColor();
-            case Gradient -> getGradientColor();
-            case Flashing -> getFlashColor();
-            case HueShift -> getHueShiftColor();
+            case Rainbow -> getRainbowColor(rainbowTransition.get(), rainbowSteps.get(), rainbowSpeed.get());
+            case Gradient -> getGradientColor(colors.get(), gradientSpeed.get());
+            case Flashing -> getFlashColor(flashColors.get());
+            case HueShift -> getHueShiftColor(hueShiftBaseColor.get(), hueShiftSpeed.get(), hueShiftRange.get());
             case ByValue -> getByValueColor(level);
+            case ByValueRanges -> ColorRangeEntry.resolve(valueRanges.get(), level, Color.WHITE);
+        };
+    }
+
+    private Color getMaxColor() {
+        return switch (maxColorMode.get()) {
+            case Fixed -> maxColor.get();
+            case Rainbow -> getRainbowColor(maxRainbowTransition.get(), maxRainbowSteps.get(), maxRainbowSpeed.get());
+            case Gradient -> getGradientColor(maxGradientColors.get(), maxGradientSpeed.get());
+            case Flashing -> getFlashColor(maxFlashColors.get());
+            case HueShift -> getHueShiftColor(maxHueShiftBaseColor.get(), maxHueShiftSpeed.get(), maxHueShiftRange.get());
         };
     }
 
@@ -382,12 +518,11 @@ public class XPLevelAdjust extends Module {
         );
     }
 
-    private Color getHueShiftColor() {
-        SettingColor base = hueShiftBaseColor.get();
+    private Color getHueShiftColor(SettingColor base, double speed, double range) {
         float[] hsb = java.awt.Color.RGBtoHSB(base.r, base.g, base.b, null);
 
-        double time = System.currentTimeMillis() / 1000.0 * hueShiftSpeed.get();
-        double offset = Math.sin(time) * hueShiftRange.get();
+        double time = System.currentTimeMillis() / 1000.0 * speed;
+        double offset = Math.sin(time) * range;
         float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
 
         Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
@@ -395,14 +530,13 @@ public class XPLevelAdjust extends Module {
         return color;
     }
 
-    private Color getRainbowColor() {
-        double time = System.currentTimeMillis() / 1000.0 * rainbowSpeed.get() * 60.0;
+    private Color getRainbowColor(RainbowTransition transition, int steps, double speed) {
+        double time = System.currentTimeMillis() / 1000.0 * speed * 60.0;
 
         float hue;
-        if (rainbowTransition.get() == RainbowTransition.Soft) {
+        if (transition == RainbowTransition.Soft) {
             hue = (float) (time % 360.0);
         } else {
-            int steps = rainbowSteps.get();
             int step = (int) (time / (360.0 / steps)) % steps;
             hue = step * (360f / steps);
         }
@@ -410,12 +544,11 @@ public class XPLevelAdjust extends Module {
         return Color.fromHsv(hue, 1, 1);
     }
 
-    private Color getGradientColor() {
-        List<SettingColor> list = colors.get();
+    private Color getGradientColor(List<SettingColor> list, double speed) {
         if (list.isEmpty()) return Color.WHITE;
         if (list.size() == 1) return list.get(0);
 
-        double time = (System.currentTimeMillis() / 1000.0 * gradientSpeed.get()) % list.size();
+        double time = (System.currentTimeMillis() / 1000.0 * speed) % list.size();
         int index = (int) time;
         float t = (float) (time - index);
 
@@ -430,8 +563,7 @@ public class XPLevelAdjust extends Module {
         );
     }
 
-    private Color getFlashColor() {
-        List<TimedColorEntry> entries = flashColors.get();
+    private Color getFlashColor(List<TimedColorEntry> entries) {
         if (entries.isEmpty()) return Color.WHITE;
         if (entries.size() == 1) return entries.get(0).color;
 

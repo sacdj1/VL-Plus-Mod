@@ -41,7 +41,19 @@ public class VLPlusAdditions {
         "item-info",
         "health-bar-adjust",
         "stamina-bar-adjust",
-        "gui-scale-adjust"
+        "hit-tint",
+        "no-mistakes",
+        "line-of-sight",
+        "visualizer",
+        "cheese-control",
+        "animations",
+        "quick-actions",
+        "awareness",
+        "fight-recorder",
+        "debug-log",
+        "item-bobbing",
+        "resource-profiler",
+        "item-display"
     );
 
     // Module ids (Module.name) that originate upstream but have been meaningfully modified/extended.
@@ -75,7 +87,12 @@ public class VLPlusAdditions {
         "chestplate-slot",
         "leggings-slot",
         "health-bar",
-        "stamina-bar"
+        "stamina-bar",
+        "target-indicator",
+        "food-counter",
+        "bones-warning",
+        "damage-numbers",
+        "venom"
     );
 
     // HudElementInfo ids (HudElementInfo.name) that originate upstream but have been modified.

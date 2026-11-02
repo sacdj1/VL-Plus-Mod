@@ -37,13 +37,14 @@ public class ReaderRuleListScreen extends WindowScreen {
     private void initTable() {
         table.clear();
 
-        table.add(theme.label("Each rule watches the sources you pick for text matching its pattern, then fires the notifications you pick."));
+        table.add(theme.label("Each rule watches the sources you pick for text matching its pattern, then fires the notifications you pick.", 400));
         table.row();
         table.add(theme.horizontalSeparator()).expandX();
         table.row();
 
         for (ReaderRule rule : List.copyOf(setting.get())) {
-            table.add(theme.label(rule.name)).expandCellX();
+            String name = rule.name.isBlank() ? "(unnamed rule)" : rule.name;
+            table.add(theme.label(name)).expandCellX();
             table.add(theme.label(summary(rule)));
 
             WHorizontalList list = table.add(theme.horizontalList()).expandCellX().widget();
@@ -101,7 +102,7 @@ public class ReaderRuleListScreen extends WindowScreen {
         if (rule.watchChat) sb.append("Chat ");
         if (rule.watchBossBar) sb.append("BossBar ");
         if (rule.watchScoreboard) sb.append("Scoreboard ");
-        if (rule.watchTitle) sb.append("Title ");
+        if (rule.titleWatch != ReaderRule.TitleWatch.Off) sb.append(rule.titleWatch).append(' ');
         if (sb.isEmpty()) sb.append("(no sources) ");
 
         sb.append("- \"").append(rule.pattern.isEmpty() ? "(empty)" : rule.pattern).append("\"");

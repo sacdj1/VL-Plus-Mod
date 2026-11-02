@@ -170,7 +170,14 @@ public class GuiRenderer {
                 tooltipWidget.init();
             }
 
-            tooltipWidget.move(-tooltipWidget.x + mouseX + 12, -tooltipWidget.y + mouseY + 12);
+            // Unclamped, a tooltip anchored at the cursor can still run past the right/bottom
+            // screen edge (worse now that wrapping - see WTooltip - makes long ones taller/wider
+            // than a single line was), with nothing pulling it back on-screen. Clamp it to the
+            // window bounds the same way, so it never renders partly off-screen regardless of
+            // where the mouse is.
+            double tx = Math.min(mouseX + 12, getWindowWidth() - tooltipWidget.width);
+            double ty = Math.min(mouseY + 12, getWindowHeight() - tooltipWidget.height);
+            tooltipWidget.move(-tooltipWidget.x + tx, -tooltipWidget.y + ty);
 
             setAlpha(tooltipAnimProgress);
 

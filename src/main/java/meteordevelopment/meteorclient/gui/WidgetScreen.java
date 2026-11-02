@@ -264,11 +264,19 @@ public abstract class WidgetScreen extends Screen {
         RENDERER.theme = theme;
         theme.beforeRender();
 
+        // try/finally so RENDERER.end() always runs even if some widget's render() throws - without
+        // it, the top-level scissor GuiRenderer.begin() pushes (and the Renderer2D meshes it begins)
+        // never got popped/ended, permanently corrupting every screen's rendering for the rest of the
+        // session (same failure mode as WWindow/WSection/WView's own now-fixed inner pairing, just at
+        // the outermost level, where nothing inside those three happened to catch it first).
         RENDERER.begin(context);
-        RENDERER.setAlpha(animProgress);
-        root.render(RENDERER, mouseX, mouseY, delta / 20);
-        RENDERER.setAlpha(1);
-        RENDERER.end();
+        try {
+            RENDERER.setAlpha(animProgress);
+            root.render(RENDERER, mouseX, mouseY, delta / 20);
+            RENDERER.setAlpha(1);
+        } finally {
+            RENDERER.end();
+        }
 
         boolean tooltip = RENDERER.renderTooltip(context, mouseX, mouseY, delta / 20);
 

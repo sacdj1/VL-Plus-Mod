@@ -113,12 +113,28 @@ public abstract class WWindow extends WVerticalList {
     public boolean render(GuiRenderer renderer, double mouseX, double mouseY, double delta) {
         if (!visible) return true;
 
-        boolean scissor = (animProgress != 0 && animProgress != 1) || (expanded && animProgress != 1);
-        if (scissor) renderer.scissorStart(x, y, width, (height - header.height) * animProgress + header.height);
-        boolean toReturn = super.render(renderer, mouseX, mouseY, delta);
-        if (scissor) renderer.scissorEnd();
-
-        return toReturn;
+        // Always scissored to this window's own bounds now, not just while animating - a fully
+        // expanded, non-animating window used to skip scissorStart/scissorEnd entirely, which also
+        // skips GuiRenderer's endRender()/beginRender() flush pair. With several such windows in a
+        // row (the normal case: most category windows sit still, not mid-animation, most of the
+        // time), none of them ever got their own flush boundary, so their queued text operations
+        // all piled into ONE shared, unflushed batch spanning every one of those windows, finally
+        // drawn together whenever something ELSE (the next window that WAS mid-animation, or the
+        // screen's own outer scissor) finally forced a flush - under THAT flush's transform/scissor
+        // state, not each window's own. Scissoring every window to its own exact bounds every frame
+        // (harmless when content already fits, which it always does here - height is computed FROM
+        // the content) forces a flush right at the end of each window's own render, so its text
+        // never has a chance to bleed into a later window's batch.
+        // try/finally so scissorEnd() always runs even if a child widget's render() throws - without
+        // it, one exception anywhere in this window's whole subtree left GuiRenderer's scissor stack
+        // (and the shared Renderer2D meshes it begins/ends) permanently unbalanced, corrupting every
+        // other window/section's rendering for the rest of the session (see Mesh.begin()'s own note).
+        renderer.scissorStart(x, y, width, (height - header.height) * animProgress + header.height);
+        try {
+            return super.render(renderer, mouseX, mouseY, delta);
+        } finally {
+            renderer.scissorEnd();
+        }
     }
 
     @Override

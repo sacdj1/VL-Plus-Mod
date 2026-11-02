@@ -48,6 +48,13 @@ public class Config extends System<Config> {
         .build()
     );
 
+    public final Setting<Boolean> customPanorama = sgVisual.add(new BoolSetting.Builder()
+        .name("custom-panorama")
+        .description("Uses a custom title screen panorama instead of vanilla's - 6 images (panorama_0.png .. panorama_5.png, same faces/order as vanilla's own) dropped into .minecraft/vlplus-panoramas/. Falls back to vanilla automatically whenever those 6 files aren't all there (none taken yet, or they got removed) - toggling this on ahead of time is safe.")
+        .defaultValue(true)
+        .build()
+    );
+
     public final Setting<Double> rainbowSpeed = sgVisual.add(new DoubleSetting.Builder()
         .name("rainbow-speed")
         .description("The global rainbow speed.")
@@ -134,16 +141,16 @@ public class Config extends System<Config> {
     public final Setting<Boolean> titleScreenQuickJoin = sgVisual.add(new BoolSetting.Builder()
         .name("title-screen-quick-join")
         .description("Adds a \"Join Ventureland\" button to the title screen that connects straight to it, using whatever that server's own entry in the Multiplayer server list is currently configured as (name, resource pack policy, etc.) - that entry always exists there, even if never manually added.")
-        .defaultValue(false)
+        .defaultValue(true)
         .build()
     );
 
-    public final Setting<Boolean> autoJoinVentureland = sgVisual.add(new BoolSetting.Builder()
+    public final Setting<Boolean> autoJoinVentureland = VLPlusAdditions.markExperimental(sgVisual.add(new BoolSetting.Builder()
         .name("auto-join-ventureland")
-        .description("Automatically connects to Ventureland the moment the title screen first appears after launching the game, using the same server list entry Title Screen Quick Join does. Only fires once per launch - returning to the title screen later (e.g. after disconnecting) won't trigger it again.")
+        .description("Automatically connects to Ventureland the moment the title screen first appears after launching the game, using the same server list entry Title Screen Quick Join does. Only fires once per launch - returning to the title screen later (e.g. after disconnecting) won't trigger it again. Experimental: this was previously disabled outright after it caused the game to freeze partway through a session on this modpack - the root cause was never found, so it's back on a case-by-case opt-in basis (off by default) rather than as a trusted default.")
         .defaultValue(false)
         .build()
-    );
+    ));
 
     // Chat
 

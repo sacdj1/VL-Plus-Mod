@@ -130,6 +130,11 @@ public class BossDebug extends Module {
 
         String key = id.toString();
 
+        // Block/item particles carry what they're made of (e.g. which wool color) - that's the useful
+        // part for telling bombs/attacks apart, so it's part of the key and the log line.
+        if (packet.getParameters() instanceof net.minecraft.particle.BlockStateParticleEffect bs) key += "/" + Registries.BLOCK.getId(bs.getBlockState().getBlock());
+        else if (packet.getParameters() instanceof net.minecraft.particle.ItemStackParticleEffect is) key += "/" + Registries.ITEM.getId(is.getItemStack().getItem());
+
         long now = System.currentTimeMillis();
         Long last = lastLogged.get(key);
         if (last != null && now - last < cooldown.get()) return;
@@ -140,9 +145,9 @@ public class BossDebug extends Module {
 
         if (nearest != null) {
             double dist = nearest.getPos().distanceTo(new Vec3d(x, y, z));
-            info("Particle §b%s§r at (%.1f, %.1f, %.1f) near §e%s§r (%.1f blocks)", key, x, y, z, describeEntity(nearest), dist);
+            info("Particle §b%s§r at (%.1f, %.1f, %.1f) count=%d speed=%.2f offset=(%.2f, %.2f, %.2f) near §e%s§r (%.1f blocks)", key, x, y, z, packet.getCount(), packet.getSpeed(), packet.getOffsetX(), packet.getOffsetY(), packet.getOffsetZ(), describeEntity(nearest), dist);
         } else {
-            info("Particle §b%s§r at (%.1f, %.1f, %.1f) - nothing within %.0f blocks", key, x, y, z, radius.get());
+            info("Particle §b%s§r at (%.1f, %.1f, %.1f) count=%d speed=%.2f offset=(%.2f, %.2f, %.2f) - nothing within %.0f blocks", key, x, y, z, packet.getCount(), packet.getSpeed(), packet.getOffsetX(), packet.getOffsetY(), packet.getOffsetZ(), radius.get());
         }
     }
 

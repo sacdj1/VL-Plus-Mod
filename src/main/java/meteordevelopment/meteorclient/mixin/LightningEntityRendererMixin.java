@@ -24,10 +24,9 @@ public abstract class LightningEntityRendererMixin {
     @Inject(method = "drawBranch", at = @At(value = "HEAD"), cancellable = true)
     private static void onSetLightningVertex(Matrix4f matrix4f, VertexConsumer vertexConsumer, float f, float g, int i, float h, float j, float k, float l, float m, float n, float o, boolean bl, boolean bl2, boolean bl3, boolean bl4, CallbackInfo ci) {
         Ambience ambience = Modules.get().get(Ambience.class);
+        Color color = ambience.isActive() ? ambience.effectiveLightningColor() : null;
 
-        if (ambience.isActive() && ambience.changeLightningColor.get()) {
-            Color color = ambience.lightningColor.get();
-
+        if (color != null) {
             vertexConsumer.vertex(matrix4f, f + (bl ? o : -o), (float)(i * 16), g + (bl2 ? o : -o)).color(color.r / 255f, color.g / 255f, color.b / 255f, 0.3F);
             vertexConsumer.vertex(matrix4f, h + (bl ? n : -n), (float)((i + 1) * 16), j + (bl2 ? n : -n)).color(color.r / 255f, color.g / 255f, color.b / 255f, 0.3F);
             vertexConsumer.vertex(matrix4f, h + (bl3 ? n : -n), (float)((i + 1) * 16), j + (bl4 ? n : -n)).color(color.r / 255f, color.g / 255f, color.b / 255f, 0.3F);

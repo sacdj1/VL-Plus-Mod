@@ -50,6 +50,8 @@ public abstract class Module implements ISerializable<Module>, Comparable<Module
     public boolean chatFeedback = true;
     public boolean favorite = false;
     public boolean hidden = false;
+    /** Only visible/usable while .Admin is unlocked (same lock as the Cheese category), regardless of which category the module lives in - lets an admin-only module sit alongside its public siblings, e.g. under Bosses. */
+    public boolean adminOnly = false;
 
     public Module(Category category, String name, String description, String... aliases) {
         if (name.contains(" ")) MeteorClient.LOG.warn("Module '{}' contains invalid characters in its name making it incompatible with Meteor Client commands.", name);

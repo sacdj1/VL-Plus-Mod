@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.hud;
 
+import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.meteor.CustomFontChangedEvent;
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
@@ -22,6 +23,7 @@ import meteordevelopment.orbit.EventHandler;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
 import org.jetbrains.annotations.NotNull;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.*;
 
@@ -94,6 +96,35 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         .build()
     );
 
+    public final Setting<Boolean> clickToToggle = sgEditor.add(new BoolSetting.Builder()
+        .name("click-to-toggle")
+        .description("A plain left-click (no drag) on an element in the HUD editor turns it on/off. Easy to do by accident while selecting or moving things, which looks like elements randomly turning off - off by default; Enter on a hovered element and each element's own Active checkbox still toggle it.")
+        .defaultValue(false)
+        .build()
+    );
+
+    public final Setting<Keybind> noSnapKeybind = sgEditor.add(new KeybindSetting.Builder()
+        .name("no-snap-key")
+        .description("Hold this key while dragging a HUD element in the editor to move it freely, ignoring the snapping range above.")
+        .defaultValue(Keybind.fromKey(GLFW.GLFW_KEY_LEFT_ALT))
+        .build()
+    );
+
+    public final Setting<Boolean> showCrosshair = sgEditor.add(new BoolSetting.Builder()
+        .name("show-crosshair")
+        .description("Draws a small crosshair at the exact center of the screen while the editor is open - the real one isn't rendered here (it's a screen, not gameplay), so this gives you something to line elements up against.")
+        .defaultValue(true)
+        .build()
+    );
+
+    public final Setting<SettingColor> crosshairColor = sgEditor.add(new ColorSetting.Builder()
+        .name("crosshair-color")
+        .description("Color of the editor's crosshair marker.")
+        .defaultValue(new SettingColor(255, 255, 255, 180))
+        .visible(showCrosshair::get)
+        .build()
+    );
+
     // Keybindings
     @SuppressWarnings("unused")
     private final Setting<Keybind> keybind = sgKeybind.add(new KeybindSetting.Builder()
@@ -119,11 +150,13 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
 
         register(MeteorTextHud.INFO);
         register(ItemHud.INFO);
+        register(FoodCounterHud.INFO);
         register(HotbarSlotHud.INFO);
         register(HeldItemHud.INFO);
         register(ChestplateSlotHud.INFO);
         register(LeggingsSlotHud.INFO);
         register(HealthBarHud.INFO);
+        register(DamageNumbersHud.INFO);
         register(StaminaBarHud.INFO);
         register(InventoryHud.INFO);
         register(CompassHud.INFO);
@@ -131,11 +164,17 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(PlayerModelHud.INFO);
         register(ActiveModulesHud.INFO);
         register(LagNotifierHud.INFO);
+        register(CooldownTrackerHud.INFO);
+        register(TargetIndicatorHud.INFO);
+        register(BonesWarningHud.INFO);
+        register(FireHud.INFO);
+        register(ArenaHud.INFO);
         register(PlayerRadarHud.INFO);
         register(ModuleInfosHud.INFO);
         register(PotionTimersHud.INFO);
         register(CombatHud.INFO);
         register(DpsHud.INFO);
+        register(VenomHud.INFO);
         register(AbilityCooldownHud.INFO);
         register(XPLevelHud.INFO);
         register(ReaderNotifHud.INFO);
@@ -272,6 +311,8 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         }
     }
 
+    private final java.util.Set<String> failedElements = new java.util.HashSet<>();
+
     @EventHandler
     private void onRender(Render2DEvent event) {
         if (Utils.isLoading()) return;
@@ -281,17 +322,27 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
 
         HudRenderer.INSTANCE.begin(event.drawContext);
 
-        for (HudElement element : elements) {
-            element.updatePos();
+        try {
+            for (HudElement element : elements) {
+                try {
+                    element.updatePos();
 
-            if (element.isActive()) {
-                HudRenderer.INSTANCE.setElementAlpha(element.alpha.get() / 255.0);
-                element.render(HudRenderer.INSTANCE);
-                HudRenderer.INSTANCE.setElementAlpha(1.0);
+                    if (element.isActive()) {
+                        HudRenderer.INSTANCE.setElementAlpha(element.alpha.get() / 255.0);
+                        element.render(HudRenderer.INSTANCE);
+                    }
+                } catch (RuntimeException e) {
+                    // One element throwing mid-render used to skip end() below: the vanilla text renderer stayed
+                    // in "scale individually" mode (shrinking/shifting every menu's text) and its next begin()
+                    // threw "called twice", switching the whole HUD off.
+                    if (failedElements.add(element.info.name)) MeteorClient.LOG.error("HUD element {} threw while rendering", element.info.name, e);
+                } finally {
+                    HudRenderer.INSTANCE.setElementAlpha(1.0);
+                }
             }
+        } finally {
+            HudRenderer.INSTANCE.end();
         }
-
-        HudRenderer.INSTANCE.end();
     }
 
     private boolean shouldHideHud() {

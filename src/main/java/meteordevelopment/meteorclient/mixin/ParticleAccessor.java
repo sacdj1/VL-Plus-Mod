@@ -15,6 +15,9 @@ public interface ParticleAccessor {
     @Invoker("setAlpha")
     void invokeSetAlpha(float alpha);
 
+    @Invoker("getBrightness")
+    int invokeGetBrightness(float tickDelta);
+
     @Accessor("red")
     float getRed();
 
@@ -26,4 +29,22 @@ public interface ParticleAccessor {
 
     @Accessor("alpha")
     float getAlpha();
+
+    @Accessor("x")
+    double getX();
+
+    @Accessor("y")
+    double getY();
+
+    @Accessor("z")
+    double getZ();
+
+    @Accessor("prevPosX")
+    double getPrevPosX();
+
+    @Accessor("prevPosY")
+    double getPrevPosY();
+
+    @Accessor("prevPosZ")
+    double getPrevPosZ();
 }

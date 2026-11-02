@@ -25,10 +25,16 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
  * sprites, not actual item icons, so there's nothing for Item Info to attach to there).
  */
 public class HotbarSlotHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<HotbarSlotHud> INFO = new HudElementInfo<>(Hud.GROUP, "hotbar-slot", "Displays whatever item is currently in a chosen hotbar slot.", HotbarSlotHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
     private final SettingGroup sgBackground = settings.createGroup("Background");
+    private final SettingGroup sgBorder = settings.createGroup("Border");
 
     private final Setting<Integer> slot = sgGeneral.add(new IntSetting.Builder()
         .name("slot")
@@ -73,15 +79,51 @@ public class HotbarSlotHud extends HudElement {
         .build()
     );
 
+    private final Setting<Boolean> showBorder = sgBorder.add(new BoolSetting.Builder()
+        .name("show-border")
+        .description("Draws an outline around the element.")
+        .defaultValue(false)
+        .onChanged(v -> calculateSize())
+        .build()
+    );
+
+    private final Setting<SettingColor> borderColor = sgBorder.add(new ColorSetting.Builder()
+        .name("border-color")
+        .description("Color of the outline.")
+        .defaultValue(new SettingColor(255, 255, 255))
+        .visible(showBorder::get)
+        .build()
+    );
+
+    private final Setting<Integer> borderThickness = sgBorder.add(new IntSetting.Builder()
+        .name("border-thickness")
+        .description("Thickness of the outline, in pixels. Also reserves this much extra space around the item so the outline doesn't overlap it.")
+        .defaultValue(1)
+        .min(1)
+        .sliderRange(1, 5)
+        .visible(showBorder::get)
+        .onChanged(v -> calculateSize())
+        .build()
+    );
+
     private HotbarSlotHud() {
         super(INFO);
 
         calculateSize();
     }
 
+    // Plain spacing setting - independent of the border outline. The outline itself (below) is
+    // drawn OUTSIDE the box's own bounds rather than reserved-for by growing the box - see
+    // HeldItemHud's identical itemInset() for the full rationale (growing the box broke anchoring:
+    // for a Left/Top-anchored element, growing size only extends the box AWAY from its anchored
+    // corner, so the item visibly shifted toward that corner whenever the border toggled on).
+    private double itemInset() {
+        return border.get();
+    }
+
     @Override
     public void setSize(double width, double height) {
-        super.setSize(width + border.get() * 2, height + border.get() * 2);
+        super.setSize(width, height);
     }
 
     private void calculateSize() {
@@ -92,6 +134,17 @@ public class HotbarSlotHud extends HudElement {
     public void render(HudRenderer renderer) {
         if (background.get()) renderer.quad(x, y, getWidth(), getHeight(), backgroundColor.get());
 
+        if (showBorder.get()) {
+            double t = borderThickness.get() * scale.get();
+            double w = getWidth(), h = getHeight();
+            Color c = borderColor.get();
+
+            renderer.quad(x - t, y - t, w + t * 2, t, c);
+            renderer.quad(x - t, y + h, w + t * 2, t, c);
+            renderer.quad(x - t, y, t, h, c);
+            renderer.quad(x + w, y, t, h, c);
+        }
+
         ItemStack stack = mc.player != null ? mc.player.getInventory().getStack(slot.get() - 1) : ItemStack.EMPTY;
 
         if (stack.isEmpty() && !isInEditor()) return;
@@ -101,8 +154,9 @@ public class HotbarSlotHud extends HudElement {
             renderer.line(x, y + getHeight(), x + getWidth(), y, Color.GRAY);
         } else {
             renderer.post(() -> {
-                double px = this.x + border.get();
-                double py = this.y + border.get();
+                double inset = itemInset();
+                double px = this.x + inset;
+                double py = this.y + inset;
 
                 String countOverride = stack.getCount() > 1 ? String.valueOf(stack.getCount()) : null;
                 renderer.item(stack, (int) px, (int) py, scale.get().floatValue(), true, countOverride);

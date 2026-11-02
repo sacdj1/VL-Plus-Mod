@@ -17,6 +17,11 @@ import net.minecraft.item.Items;
 import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 public class ArmorHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     public static final HudElementInfo<ArmorHud> INFO = new HudElementInfo<>(Hud.GROUP, "armor", "Displays your armor.", ArmorHud::new);
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();

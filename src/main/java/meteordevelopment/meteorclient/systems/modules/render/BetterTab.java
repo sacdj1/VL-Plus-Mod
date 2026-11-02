@@ -80,7 +80,7 @@ public class BetterTab extends Module {
 
 
     public BetterTab() {
-        super(Categories.Render, "better-tab", "Various improvements to the tab list.");
+        super(Categories.Hud, "better-tab", "Various improvements to the tab list.");
     }
 
     public Text getPlayerName(PlayerListEntry playerListEntry) {

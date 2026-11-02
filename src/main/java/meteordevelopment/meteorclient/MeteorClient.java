@@ -137,8 +137,22 @@ public class MeteorClient implements ClientModInitializer {
         // Load configs
         Systems.load();
 
+        // Chat Tools -> VL+ macros, one-time-per-name (see DefaultMacros)
+        meteordevelopment.meteorclient.systems.macros.DefaultMacros.seed();
+
         // Post init
         ReflectInit.init(PostInit.class);
+
+        // Force these specific classes to load now, synchronously, while nothing else is
+        // concurrently touching the mod jar - HudEditorScreen/its SelectionBox/Snapper are only
+        // ever lazily loaded on first use (opening the HUD editor, then dragging an element), which
+        // in practice tends to land right when resource-pack loading is ALSO reading from the same
+        // jar on another thread, hitting a known upstream Fabric Loader thread-safety bug
+        // (ZipException "invalid LOC header" from two threads sharing one ZipFile handle) and
+        // crashing. Loading them here instead, at a quiet moment during startup, avoids that race
+        // window entirely for the rest of the session - it can't fix the underlying Loader bug, but
+        // it means these specific classes are never the ones to trigger it later.
+        preloadRacyClasses();
 
         // Save on shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
@@ -146,6 +160,27 @@ public class MeteorClient implements ClientModInitializer {
             Systems.save();
             GuiThemes.save();
         }));
+    }
+
+    private static final String[] RACY_CLASSES = {
+        "meteordevelopment.meteorclient.utils.other.Snapper",
+        "meteordevelopment.meteorclient.utils.other.Snapper$Container",
+        "meteordevelopment.meteorclient.utils.other.Snapper$Element",
+        "meteordevelopment.meteorclient.utils.other.Snapper$Direction",
+        "meteordevelopment.meteorclient.systems.hud.screens.HudEditorScreen",
+        "meteordevelopment.meteorclient.systems.hud.screens.HudEditorScreen$SelectionBox",
+        "meteordevelopment.meteorclient.systems.hud.elements.DpsHud$DamageEvent",
+        "meteordevelopment.meteorclient.systems.hud.elements.DpsHud$Mode"
+    };
+
+    private void preloadRacyClasses() {
+        for (String name : RACY_CLASSES) {
+            try {
+                Class.forName(name, true, MeteorClient.class.getClassLoader());
+            } catch (Throwable t) {
+                LOG.warn("Failed to preload class {} (harmless - just means the race window this was meant to avoid is still open for it).", name, t);
+            }
+        }
     }
 
     @EventHandler

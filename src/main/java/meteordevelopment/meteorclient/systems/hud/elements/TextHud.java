@@ -24,6 +24,11 @@ import meteordevelopment.starscript.utils.StarscriptError;
 import java.util.List;
 
 public class TextHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     private static final Color WHITE = new Color();
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();

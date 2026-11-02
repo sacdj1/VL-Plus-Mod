@@ -25,6 +25,16 @@ import meteordevelopment.meteorclient.utils.render.color.Color;
 public class VanillaHotbarHud extends HudElement {
     public static final HudElementInfo<VanillaHotbarHud> INFO = new HudElementInfo<>(Hud.VANILLA_GROUP, "vanilla-hotbar", "Moves and scales the real hotbar (items, selection, offhand slot, attack indicator) - reported not working correctly, under investigation.", VanillaHotbarHud::new);
 
+    // The hotbar's real box is a wide 182x22 rectangle - at rotation, the HUD editor's normal
+    // rotation-aware outline (matching that exact aspect ratio) turns into a thin, hard-to-grab
+    // sliver near 90 degrees. Reporting true here instead gives it the same small, fixed-size
+    // square marker other own-background elements use, which looks and handles the same at any
+    // rotation regardless of the real element's own aspect ratio.
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
+
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
     private final Setting<Boolean> hide = sgGeneral.add(new BoolSetting.Builder()
@@ -48,8 +58,8 @@ public class VanillaHotbarHud extends HudElement {
         .name("rotation")
         .description("Rotates the whole hotbar around its own center, in degrees clockwise.")
         .defaultValue(0)
-        .range(0, 359)
-        .sliderRange(0, 359)
+        .range(-359, 359)
+        .sliderRange(-359, 359)
         .build()
     );
 
@@ -58,6 +68,47 @@ public class VanillaHotbarHud extends HudElement {
         .description("Counter-rotates each item icon so they stay upright even while the hotbar itself is rotated - only the row layout rotates, not the icons themselves.")
         .defaultValue(true)
         .visible(() -> rotation.get() != 0)
+        .build()
+    );
+
+    // Three independent alphas instead of the one general Alpha above (which still applies on top
+    // of these, and is the only thing affecting the attack indicator specifically, since that's not
+    // split out separately here).
+
+    private final Setting<Boolean> singleAlpha = sgGeneral.add(new BoolSetting.Builder()
+        .name("single-alpha")
+        .description("Use just the one general Alpha for the whole hotbar (items, frame and selector together) instead of the three separate ones below.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Integer> itemAlpha = sgGeneral.add(new IntSetting.Builder()
+        .name("item-alpha")
+        .description("Transparency of the item icons themselves - 255 is fully opaque, 0 is invisible.")
+        .defaultValue(255)
+        .visible(() -> !singleAlpha.get())
+        .range(0, 255)
+        .sliderRange(0, 255)
+        .build()
+    );
+
+    private final Setting<Integer> backgroundAlpha = sgGeneral.add(new IntSetting.Builder()
+        .name("background-alpha")
+        .description("Transparency of the hotbar's own frame texture (and the offhand slot frame) - 255 is fully opaque, 0 is invisible.")
+        .defaultValue(255)
+        .visible(() -> !singleAlpha.get())
+        .range(0, 255)
+        .sliderRange(0, 255)
+        .build()
+    );
+
+    private final Setting<Integer> selectorAlpha = sgGeneral.add(new IntSetting.Builder()
+        .name("selector-alpha")
+        .description("Transparency of the selected-slot highlight - 255 is fully opaque, 0 is invisible.")
+        .defaultValue(255)
+        .visible(() -> !singleAlpha.get())
+        .range(0, 255)
+        .sliderRange(0, 255)
         .build()
     );
 
@@ -89,6 +140,21 @@ public class VanillaHotbarHud extends HudElement {
 
     public boolean isHidden() {
         return hide.get();
+    }
+
+    public double getItemAlpha() {
+        if (singleAlpha.get()) return 1.0;
+        return itemAlpha.get() / 255.0;
+    }
+
+    public double getBackgroundAlpha() {
+        if (singleAlpha.get()) return 1.0;
+        return backgroundAlpha.get() / 255.0;
+    }
+
+    public double getSelectorAlpha() {
+        if (singleAlpha.get()) return 1.0;
+        return selectorAlpha.get() / 255.0;
     }
 
     @Override

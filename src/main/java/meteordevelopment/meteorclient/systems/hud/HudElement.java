@@ -124,6 +124,19 @@ public abstract class HudElement implements Snapper.Element, ISerializable<HudEl
         return 0;
     }
 
+    /**
+     * Whether this element draws its own background box behind its content - if so, the HUD
+     * editor's selection/hover indicator uses a small marker instead of the real outline, since the
+     * real outline would double up with the element's own visible box. Elements without their own
+     * background (text/icon-only, Vanilla relocator elements, center-anchored placeholder regions
+     * like Title/Subtitle/Action Bar) get the real outline instead, since there's nothing else
+     * marking their bounds. Override to true wherever the element has its own Background Color
+     * setting.
+     */
+    public boolean hasOwnBackground() {
+        return false;
+    }
+
     public void remove() {
         Hud.get().remove(this);
     }

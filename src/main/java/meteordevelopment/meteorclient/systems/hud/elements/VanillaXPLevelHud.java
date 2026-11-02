@@ -48,8 +48,8 @@ public class VanillaXPLevelHud extends HudElement {
         .name("rotation")
         .description("Rotates the whole element around its own center, in degrees clockwise.")
         .defaultValue(0)
-        .range(0, 359)
-        .sliderRange(0, 359)
+        .range(-359, 359)
+        .sliderRange(-359, 359)
         .build()
     );
 

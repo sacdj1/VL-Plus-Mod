@@ -71,10 +71,11 @@ public abstract class TitleScreenMixin extends Screen {
 
     @Inject(method = "init", at = @At("TAIL"))
     private void onInitAutoJoin(CallbackInfo ci) {
-        // Temporarily disabled: freezes the game partway through a session on this modpack -
-        // cause not yet found (not the reentrant setScreen issue this was already fixed for, see
-        // below - that connects fine, the hang happens later). Re-enable once root-caused.
-        if (true) return;
+        // Re-enabled behind Config.autoJoinVentureland now being marked experimental (and staying
+        // off by default) - this previously caused the game to freeze partway through a session on
+        // this modpack, cause never actually found (not the reentrant setScreen issue already fixed
+        // below - that connects fine, the hang happened later, well after this method returns). If
+        // that freeze resurfaces, it's this feature again - check here first.
         if (autoJoinAttempted) return;
 
         // Config can still be null on the very first TitleScreen.init() if this fires before

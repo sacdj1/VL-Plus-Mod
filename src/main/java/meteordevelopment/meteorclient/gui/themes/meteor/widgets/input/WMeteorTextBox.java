@@ -111,34 +111,41 @@ public class WMeteorTextBox extends WTextBox implements MeteorWidget {
         double pad = pad();
         double overflowWidth = getOverflowWidthForRender();
 
+        // try/finally so scissorEnd() always runs even if text rendering throws - an unguarded pair
+        // here left the GL scissor rect stuck clipped to this text box's own tiny bounds, hiding
+        // every widget rendered after it (including this box's own text on the next frame) until
+        // something else happened to call scissorStart() again - see WWindow's own comment for the
+        // full explanation of this failure mode, which is the same one here, just on a leaf widget
+        // instead of a container.
         renderer.scissorStart(x + pad, y + pad, width - pad * 2, height - pad * 2);
+        try {
+            // Text content
+            if (!text.isEmpty()) {
+                this.renderer.render(renderer, x + pad - overflowWidth, y + pad, text, theme.textColor.get());
+            }
+            else if (placeholder != null) {
+                this.renderer.render(renderer, x + pad - overflowWidth, y + pad, placeholder, theme.placeholderColor.get());
+            }
 
-        // Text content
-        if (!text.isEmpty()) {
-            this.renderer.render(renderer, x + pad - overflowWidth, y + pad, text, theme.textColor.get());
+            // Text highlighting
+            if (focused && (cursor != selectionStart || cursor != selectionEnd)) {
+                double selStart = x + pad + getTextWidth(selectionStart) - overflowWidth;
+                double selEnd = x + pad + getTextWidth(selectionEnd) - overflowWidth;
+
+                renderer.quad(selStart, y + pad, selEnd - selStart, theme.textHeight(), theme.textHighlightColor.get());
+            }
+
+            // Cursor
+            animProgress += delta * 10 * (focused && cursorVisible ? 1 : -1);
+            animProgress = MathHelper.clamp(animProgress, 0, 1);
+
+            if ((focused && cursorVisible) || animProgress > 0) {
+                renderer.setAlpha(animProgress);
+                renderer.quad(x + pad + getTextWidth(cursor) - overflowWidth, y + pad, theme.scale(1), theme.textHeight(), theme.textColor.get());
+                renderer.setAlpha(1);
+            }
+        } finally {
+            renderer.scissorEnd();
         }
-        else if (placeholder != null) {
-            this.renderer.render(renderer, x + pad - overflowWidth, y + pad, placeholder, theme.placeholderColor.get());
-        }
-
-        // Text highlighting
-        if (focused && (cursor != selectionStart || cursor != selectionEnd)) {
-            double selStart = x + pad + getTextWidth(selectionStart) - overflowWidth;
-            double selEnd = x + pad + getTextWidth(selectionEnd) - overflowWidth;
-
-            renderer.quad(selStart, y + pad, selEnd - selStart, theme.textHeight(), theme.textHighlightColor.get());
-        }
-
-        // Cursor
-        animProgress += delta * 10 * (focused && cursorVisible ? 1 : -1);
-        animProgress = MathHelper.clamp(animProgress, 0, 1);
-
-        if ((focused && cursorVisible) || animProgress > 0) {
-            renderer.setAlpha(animProgress);
-            renderer.quad(x + pad + getTextWidth(cursor) - overflowWidth, y + pad, theme.scale(1), theme.textHeight(), theme.textColor.get());
-            renderer.setAlpha(1);
-        }
-
-        renderer.scissorEnd();
     }
 }

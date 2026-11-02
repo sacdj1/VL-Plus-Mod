@@ -18,6 +18,7 @@ import meteordevelopment.meteorclient.systems.modules.world.Ambience;
 import meteordevelopment.meteorclient.utils.misc.Names;
 import meteordevelopment.meteorclient.utils.misc.NbtUtils;
 import meteordevelopment.meteorclient.utils.world.BiomeTintedBlocks;
+import meteordevelopment.meteorclient.utils.world.BlockSearch;
 import meteordevelopment.meteorclient.utils.world.LegacyBlocks;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 
 import static meteordevelopment.meteorclient.MeteorClient.mc;
@@ -55,8 +57,35 @@ public class BlockColorMapScreen extends WindowScreen {
     private WTable table;
 
     private String filterText = "";
+    // Local to this screen, not Ambience's own Allow Untinted Blocks setting - that one only
+    // controls the DEFAULT starting state here, so a block list screen (Region, Biome, or anything
+    // else sharing this component) always has its own obvious way to show every block without
+    // first having to go dig that setting out of the main Ambience module elsewhere.
+    private boolean showAllBlocks;
+    // Same idea as Show All Blocks above - local to this screen so it's reachable right here, seeded
+    // from Ambience's own Legacy Blocks Only setting as the starting value. Only has an effect while
+    // Show All Blocks is on, same as the setting it's seeded from.
+    private boolean legacyOnly;
+    private final Consumer<WTable> headerRows;
 
     public BlockColorMapScreen(GuiTheme theme, String title, String scopeLabel, Map<Block, List<WeightedColorEntry>> blocks, Runnable onChanged, Predicate<Block> isEnabled, BiConsumer<Block, Boolean> setEnabled) {
+        this(theme, title, scopeLabel, blocks, onChanged, isEnabled, setEnabled, Modules.get().get(Ambience.class).allowUntintedBlocks.get());
+    }
+
+    // defaultShowAllBlocks: lets a caller start this screen with Show All Blocks off regardless of
+    // Ambience's own Allow Untinted Blocks setting - Season Colors uses this, since its own blocks
+    // are grass/foliage/water-focused by default and showing every block in the game right away
+    // (Allow Untinted Blocks is commonly left on globally for Global Blocks' sake) made the season's
+    // own list harder to find the few blocks actually worth configuring among.
+    public BlockColorMapScreen(GuiTheme theme, String title, String scopeLabel, Map<Block, List<WeightedColorEntry>> blocks, Runnable onChanged, Predicate<Block> isEnabled, BiConsumer<Block, Boolean> setEnabled, boolean defaultShowAllBlocks) {
+        this(theme, title, scopeLabel, blocks, onChanged, isEnabled, setEnabled, defaultShowAllBlocks, null);
+    }
+
+    // headerRows: lets a caller add its own rows above everything else here (Season Colors uses
+    // this for its six flat sky/cloud/lightning/lava colors), so the whole thing - flat colors AND
+    // blocks - lives behind one single button/screen instead of two separate ones. Null for every
+    // other caller (Global Blocks, Regions, Per-Biome), which have no such extra rows of their own.
+    public BlockColorMapScreen(GuiTheme theme, String title, String scopeLabel, Map<Block, List<WeightedColorEntry>> blocks, Runnable onChanged, Predicate<Block> isEnabled, BiConsumer<Block, Boolean> setEnabled, boolean defaultShowAllBlocks, Consumer<WTable> headerRows) {
         super(theme, title + " - Blocks");
 
         this.blocks = blocks;
@@ -64,6 +93,10 @@ public class BlockColorMapScreen extends WindowScreen {
         this.scopeLabel = scopeLabel;
         this.isEnabled = isEnabled;
         this.setEnabled = setEnabled;
+        this.headerRows = headerRows;
+
+        this.showAllBlocks = defaultShowAllBlocks;
+        this.legacyOnly = Modules.get().get(Ambience.class).legacyBlocksOnly.get();
     }
 
     // Some tinted blocks (fluids) have no BlockItem, so their default item icon is air.
@@ -154,6 +187,30 @@ public class BlockColorMapScreen extends WindowScreen {
             initWidgets();
         };
 
+        // Long labels here stretch the header row - and since the window sizes itself to fit its
+        // widest row, that dragged every entry's own row wide too, pushing each block's color
+        // controls far away from its name/icon on the left. Short labels + a hover tooltip for the
+        // full explanation instead.
+        var showAllLabel = header.add(theme.label("Show All Blocks")).right().widget();
+        showAllLabel.tooltip = "Not just biome-tintable ones - every block in the game.";
+        var showAll = header.add(theme.checkbox(showAllBlocks)).right().widget();
+        showAll.action = () -> {
+            showAllBlocks = showAll.checked;
+
+            table.clear();
+            initTable();
+        };
+
+        var legacyLabel = header.add(theme.label("Legacy Only")).right().widget();
+        legacyLabel.tooltip = "Hides blocks added after 1.8.9 from the list below - only has an effect while Show All Blocks is on.";
+        var legacy = header.add(theme.checkbox(legacyOnly)).right().widget();
+        legacy.action = () -> {
+            legacyOnly = legacy.checked;
+
+            table.clear();
+            initTable();
+        };
+
         // Copies/pastes this whole block list at once - e.g. copy from a biome's blocks and
         // paste onto a region's, or vice versa.
         header.add(theme.button(GuiRenderer.COPY)).right().widget().action = () ->
@@ -216,7 +273,7 @@ public class BlockColorMapScreen extends WindowScreen {
             };
         } else {
             table.add(theme.plus()).expandCellX().right().widget().action = () -> {
-                blocks.put(key, new ArrayList<>());
+                blocks.put(key, newDefaultColorList());
                 onChanged.run();
 
                 table.clear();
@@ -227,9 +284,28 @@ public class BlockColorMapScreen extends WindowScreen {
         table.row();
     }
 
+    // Seeds a freshly-added block with one real color entry instead of an empty list - landing on
+    // "Colors (0)" with nothing inside it hid the per-entry blend mode button (and everything else
+    // in WeightedColorListScreen) an extra "Add Color" click deeper than it needed to be, which kept
+    // getting mistaken for "there's no blend mode here at all" instead of "click Colors, then Add
+    // Color first".
+    private static List<WeightedColorEntry> newDefaultColorList() {
+        List<WeightedColorEntry> colors = new ArrayList<>();
+        colors.add(new WeightedColorEntry(new meteordevelopment.meteorclient.utils.render.color.SettingColor(255, 255, 255, 255), 100));
+
+        return colors;
+    }
+
     private void initTable() {
         boolean showConfigured = viewMode != ViewMode.UnconfiguredOnly;
         boolean showUnconfigured = viewMode != ViewMode.ConfiguredOnly;
+
+        if (headerRows != null) {
+            headerRows.accept(table);
+
+            table.add(theme.horizontalSeparator()).expandX();
+            table.row();
+        }
 
         if (showConfigured) {
             overrideRow(blocks, Ambience.OVERRIDE_ALL, "Override Entire " + scopeLabel);
@@ -237,8 +313,6 @@ public class BlockColorMapScreen extends WindowScreen {
             overrideRow(blocks, Ambience.OVERRIDE_FOLIAGE, "Override Foliage Color");
             overrideRow(blocks, Ambience.OVERRIDE_WATER, "Override Water Color");
 
-            table.add(theme.label("The 3 colors above act as a base for their category - individual blocks below can still override them.")).expandX();
-            table.row();
             table.add(theme.horizontalSeparator()).expandX();
             table.row();
         }
@@ -251,7 +325,7 @@ public class BlockColorMapScreen extends WindowScreen {
         if (showConfigured) {
             for (Block block : selected) {
                 String name = Names.get(block);
-                if (!StringUtils.containsIgnoreCase(name, filterText)) continue;
+                if (!BlockSearch.matches(block, filterText)) continue;
 
                 int colorCount = blocks.get(block).size();
 
@@ -291,19 +365,16 @@ public class BlockColorMapScreen extends WindowScreen {
 
         if (!showUnconfigured) return;
 
-        // Blocks not yet added - only ones Ambience can actually color, unless allow-untinted-blocks is on
-        Ambience ambience = Modules.get().get(Ambience.class);
-        boolean allowUntinted = ambience.allowUntintedBlocks.get();
-        boolean legacyOnly = allowUntinted && ambience.legacyBlocksOnly.get();
-        Iterable<Block> candidates = allowUntinted ? Registries.BLOCK : BiomeTintedBlocks.BLOCKS;
+        // Blocks not yet added - only ones Ambience can actually color by default, unless Show All
+        // Blocks above is on (seeded from Ambience's own Allow Untinted Blocks, but overridable here).
+        Iterable<Block> candidates = showAllBlocks ? Registries.BLOCK : BiomeTintedBlocks.BLOCKS;
 
         List<Block> all = new ArrayList<>();
         for (Block block : candidates) {
             if (blocks.containsKey(block) || OVERRIDES.contains(block)) continue;
-            if (legacyOnly && !LegacyBlocks.isLegacy(Registries.BLOCK.getId(block).getPath())) continue;
+            if (showAllBlocks && legacyOnly && !LegacyBlocks.isLegacy(Registries.BLOCK.getId(block).getPath())) continue;
 
-            String name = Names.get(block);
-            if (StringUtils.containsIgnoreCase(name, filterText)) all.add(block);
+            if (BlockSearch.matches(block, filterText)) all.add(block);
         }
         all.sort(Comparator.comparing(Names::get));
 
@@ -311,7 +382,7 @@ public class BlockColorMapScreen extends WindowScreen {
             table.add(theme.itemWithLabel(icon(block), Names.get(block))).expandCellX();
 
             table.add(theme.plus()).expandCellX().right().widget().action = () -> {
-                blocks.put(block, new ArrayList<>());
+                blocks.put(block, newDefaultColorList());
                 onChanged.run();
 
                 table.clear();

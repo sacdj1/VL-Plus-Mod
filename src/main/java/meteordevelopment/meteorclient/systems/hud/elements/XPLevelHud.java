@@ -5,6 +5,7 @@
 
 package meteordevelopment.meteorclient.systems.hud.elements;
 
+import meteordevelopment.meteorclient.gui.screens.settings.ColorRangeListScreen;
 import meteordevelopment.meteorclient.renderer.text.FontFace;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.hud.Hud;
@@ -29,7 +30,8 @@ public class XPLevelHud extends HudElement {
         Gradient,
         Flashing,
         HueShift,
-        ByValue
+        ByValue,
+        ByValueRanges
     }
 
     public enum RainbowTransition {
@@ -225,6 +227,22 @@ public class XPLevelHud extends HudElement {
         .description("The colors to blend across as the level goes from 0 to Max Level below. Needs at least 2.")
         .defaultValue(List.of(new SettingColor(255, 0, 0), new SettingColor(255, 255, 0), new SettingColor(0, 255, 0)))
         .visible(() -> colorMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<List<ColorRangeEntry>> valueRanges = sgByValue.add(new ColorRangeListSetting.Builder()
+        .name("value-ranges")
+        .description("Each band's own level cutoff and color - a hard un-blended color per band instead of the smooth gradient above. See Edit Ranges below.")
+        .visible(() -> colorMode.get() == ColorMode.ByValueRanges)
+        .build()
+    );
+
+    private final Setting<Void> valueRangesEdit = sgByValue.add(new ButtonSetting.Builder()
+        .name("value-ranges-edit")
+        .description("Add/edit/remove the level bands above.")
+        .buttonText("Edit Ranges")
+        .screen(theme -> new ColorRangeListScreen(theme, "Color", valueRanges.get(), this.maxLevel.get()))
+        .visible(() -> colorMode.get() == ColorMode.ByValueRanges)
         .build()
     );
 
@@ -481,6 +499,7 @@ public class XPLevelHud extends HudElement {
             case Flashing -> getFlashColor();
             case HueShift -> getHueShiftColor();
             case ByValue -> getByValueColor(level);
+            case ByValueRanges -> ColorRangeEntry.resolve(valueRanges.get(), level, Color.WHITE);
         };
     }
 

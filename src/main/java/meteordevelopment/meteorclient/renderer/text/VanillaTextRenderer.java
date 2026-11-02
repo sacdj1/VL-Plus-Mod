@@ -12,6 +12,7 @@ import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.render.VertexConsumerProvider;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.util.math.RotationAxis;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
 
@@ -28,6 +29,17 @@ public class VanillaTextRenderer implements TextRenderer {
 
     public double scale = 2;
     public boolean scaleIndividually;
+
+    // Per-call rotation, in degrees clockwise around (rotationPivotX, rotationPivotY) - both in the
+    // same real screen-pixel coordinate space as the x/y passed to render(). Only takes effect when
+    // scaleIndividually is true (the normal HUD-render case, see HudRenderer.begin()) - render()
+    // batches every call into a shared immediate-mode buffer and only applies ONE transform to the
+    // whole batch at end() time, so a transform pushed onto some other MatrixStack around a single
+    // render() call (e.g. DrawContext's) has no effect at all; this is the one hook that actually
+    // reaches an individual call's own vertices. Caller must reset this to 0 after use.
+    public double rotation = 0;
+    public double rotationPivotX = 0;
+    public double rotationPivotY = 0;
 
     private boolean building;
     private double alpha = 1;
@@ -56,7 +68,17 @@ public class VanillaTextRenderer implements TextRenderer {
 
     @Override
     public void begin(double scale, boolean scaleOnly, boolean big) {
-        if (building) throw new RuntimeException("VanillaTextRenderer.begin() called twice");
+        if (building) {
+            // A previous pass never reached end() (an exception mid-render). Throwing here used to switch the
+            // whole HUD/menu text off for good; drop the stale batch and start clean instead.
+            immediate.draw();
+            building = false;
+        }
+
+        // Every pass starts in the plain (scale-at-end) mode - the HUD opts into scaleIndividually AFTER this call,
+        // so a flag left over from a HUD pass can never shrink/shift a menu's text.
+        this.scaleIndividually = false;
+        this.rotation = 0;
 
         this.scale = scale * 2;
         this.building = true;
@@ -76,6 +98,11 @@ public class VanillaTextRenderer implements TextRenderer {
         Matrix4f matrix = emptyMatrix;
         if (scaleIndividually) {
             matrices.push();
+            if (rotation != 0) {
+                matrices.translate(rotationPivotX, rotationPivotY, 0);
+                matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) rotation));
+                matrices.translate(-rotationPivotX, -rotationPivotY, 0);
+            }
             matrices.scale((float) scale, (float) scale, 1);
             matrix = matrices.peek().getPositionMatrix();
         }

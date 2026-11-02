@@ -13,6 +13,8 @@ import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.misc.Keybind;
+import meteordevelopment.meteorclient.utils.misc.MeteorStarscript;
+import meteordevelopment.meteorclient.utils.world.ScoreboardUtils;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.effect.StatusEffectInstance;
@@ -28,8 +30,12 @@ import java.util.Date;
 
 /**
  * Dumps everything the vanilla HUD/F3 screen would show (health, hunger, xp, armor, held items,
- * effects, gamemode, ping) plus full location info (position, dimension, facing) to a text file -
- * a fixed point-in-time reference for comparing against later, same idea as EntityDataDumper/ItemDataDumper.
+ * effects, gamemode, ping) plus full location info (position, dimension, facing), the current
+ * scoreboard sidebar's title/lines, and the current boss bar text, to a text file - a fixed
+ * point-in-time reference for comparing against later, same idea as EntityDataDumper/ItemDataDumper.
+ * The scoreboard/boss bar sections only have something in them at the moment of capture if one was
+ * actually showing then - capture while the thing you care about (Arena's scoreboard, a boss's
+ * bar, a Corrupted Zone readout) is actually on screen.
  */
 public class HudSnapshotDumper extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -98,6 +104,16 @@ public class HudSnapshotDumper extends Module {
             if (slot.getType() != EquipmentSlot.Type.HUMANOID_ARMOR) continue;
             sb.append(slot.getName()).append(": ").append(describe(player.getEquippedStack(slot))).append('\n');
         }
+
+        sb.append("\n=== Scoreboard ===\n");
+        if (ScoreboardUtils.title().isEmpty() && ScoreboardUtils.lines().isEmpty()) sb.append("None\n");
+        else {
+            sb.append("Title: ").append(ScoreboardUtils.title()).append('\n');
+            for (String line : ScoreboardUtils.lines()) sb.append("Line: ").append(line).append('\n');
+        }
+
+        sb.append("\n=== Boss Bar ===\n");
+        sb.append(MeteorStarscript.currentBossBarText().isEmpty() ? "None\n" : MeteorStarscript.currentBossBarText() + "\n");
 
         sb.append("\n=== Status Effects ===\n");
         if (player.getStatusEffects().isEmpty()) sb.append("None\n");

@@ -13,8 +13,14 @@ import meteordevelopment.meteorclient.settings.SettingGroup;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.Utils;
+import meteordevelopment.meteorclient.utils.misc.VenturelandGate;
 import meteordevelopment.orbit.EventHandler;
 
+/**
+ * Gated to Ventureland/singleplayer only (see VenturelandGate) - a generic autoclicker is exactly
+ * the kind of "automatic or assisted combat" that needs a server-side opt-in, and other servers
+ * never opted in.
+ */
 public class Click extends Module {
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
 
@@ -74,6 +80,11 @@ public class Click extends Module {
 
     @EventHandler
     private void onTick(TickEvent.Post event) {
+        if (!VenturelandGate.isAllowed()) {
+            toggle();
+            return;
+        }
+
         switch (leftClickMode.get()) {
             case Disabled -> {}
             case Hold -> mc.options.attackKey.setPressed(true);

@@ -19,6 +19,7 @@ import meteordevelopment.meteorclient.utils.misc.IChangeable;
 import meteordevelopment.meteorclient.utils.misc.ICopyable;
 import meteordevelopment.meteorclient.utils.misc.ISerializable;
 import meteordevelopment.meteorclient.utils.misc.Names;
+import meteordevelopment.meteorclient.utils.world.BlockSearch;
 import meteordevelopment.meteorclient.utils.world.LegacyBlocks;
 import net.minecraft.block.Block;
 import net.minecraft.registry.Registries;
@@ -80,8 +81,7 @@ public class BlockDataSettingScreen extends WindowScreen {
         }
 
         for (Block block : BLOCKS) {
-            String name = Names.get(block);
-            if (!StringUtils.containsIgnoreCase(name, filterText)) continue;
+            if (!BlockSearch.matches(block, filterText)) continue;
 
             T existingData = (T) setting.get().get(block);
             boolean changed = existingData != null && existingData.isChanged();

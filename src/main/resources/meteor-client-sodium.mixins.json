@@ -8,6 +8,7 @@
     "MeshVertexConsumerMixin",
     "SodiumFluidRendererImplDefaultRenderContextMixin",
     "SodiumColorProviderRegistryMixin",
+    "SodiumBlockRendererMixin",
     "LevelSliceAccessor"
   ],
   "injectors": {

@@ -47,7 +47,16 @@ public class CustomTextRenderer implements TextRenderer {
 
     @Override
     public void begin(double scale, boolean scaleOnly, boolean big) {
-        if (building) throw new RuntimeException("CustomTextRenderer.begin() called twice");
+        if (building) {
+            // A previous pass never reached end() (an exception mid-render). Throwing here used to
+            // wedge every future text render through this instance for good - once building got
+            // stuck true, begin() would throw on every single call from then on, silently breaking
+            // all custom-font text (menus included, whenever Config.customFont is on) until the game
+            // restarted. Drop the stale batch and start clean instead - same fix as
+            // VanillaTextRenderer.begin() already uses for the same failure mode.
+            mesh.forceReset();
+            building = false;
+        }
 
         if (!scaleOnly) mesh.begin();
 

@@ -15,6 +15,7 @@ import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WCheckbox;
 import meteordevelopment.meteorclient.settings.BlockSetting;
 import meteordevelopment.meteorclient.utils.misc.Names;
+import meteordevelopment.meteorclient.utils.world.BlockSearch;
 import meteordevelopment.meteorclient.utils.world.LegacyBlocks;
 import net.minecraft.block.Block;
 import net.minecraft.block.Blocks;
@@ -69,8 +70,9 @@ public class BlockSettingScreen extends WindowScreen {
             if (skipValue(block)) continue;
             if (legacyOnly && !LegacyBlocks.isLegacy(Registries.BLOCK.getId(block).getPath())) continue;
 
+            if (!BlockSearch.matches(block, filterText)) continue;
+
             WItemWithLabel item = theme.itemWithLabel(block.asItem().getDefaultStack(), Names.get(block));
-            if (!filterText.isEmpty() && !StringUtils.containsIgnoreCase(item.getLabelText(), filterText)) continue;
             table.add(item);
 
             WButton select = table.add(theme.button("Select")).expandCellX().right().widget();

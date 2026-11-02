@@ -11,11 +11,10 @@ import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.mixininterface.IDrawContext;
 import meteordevelopment.meteorclient.events.render.Render2DEvent;
 import meteordevelopment.meteorclient.events.render.RenderScoreboardEvent;
-import meteordevelopment.meteorclient.events.render.RenderTitleEvent;
+import meteordevelopment.meteorclient.events.render.TitleSetEvent;
 import meteordevelopment.meteorclient.systems.modules.Modules;
 import meteordevelopment.meteorclient.systems.modules.misc.BetterChat;
 import meteordevelopment.meteorclient.systems.modules.render.Freecam;
-import meteordevelopment.meteorclient.systems.modules.render.GuiScaleAdjust;
 import meteordevelopment.meteorclient.systems.modules.render.HealthBarAdjust;
 import meteordevelopment.meteorclient.systems.modules.render.NoRender;
 import meteordevelopment.meteorclient.systems.modules.render.StaminaBarAdjust;
@@ -38,6 +37,7 @@ import meteordevelopment.meteorclient.systems.hud.elements.VanillaScoreboardHud;
 import meteordevelopment.meteorclient.systems.hud.elements.VanillaItemNameHud;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.render.GrayscaleSpriteCache;
+import meteordevelopment.meteorclient.utils.render.ItemRenderAlphaState;
 import meteordevelopment.meteorclient.utils.render.VanillaHudRotationState;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import net.minecraft.client.MinecraftClient;
@@ -47,6 +47,9 @@ import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.util.math.ColorHelper;
+import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.RotationAxis;
 import net.minecraft.scoreboard.ScoreboardObjective;
 import net.minecraft.text.Text;
@@ -73,10 +76,68 @@ public abstract class InGameHudMixin {
 
     @Shadow public abstract void clear();
 
+    // ---- Vanilla HUD element replacement (deferred redraw) ----------------------------------------
+    // A Vanilla* HUD element does NOT transform vanilla's own draw where it normally happens (that
+    // pushed/popped matrices in the middle of vanilla's render, in between chat, the scoreboard, the
+    // tab list... - anything leaking out of it, or a pop that didn't line up, disturbed those). Instead
+    // vanilla's in-place draw is cancelled, and the exact same vanilla method is called again at the
+    // very END of the HUD pass (see vlReplayDeferred, called from onRender before Meteor's own HUD),
+    // wrapped in one push / try / finally / pop. Everything else has finished drawing by then, so
+    // there's nothing left for it to disturb, and the pairing is guaranteed by the finally.
+    // Static because renderArmor is a static method and needs to defer too.
+    private static final java.util.List<Runnable> vlDeferred = new java.util.ArrayList<>();
+    private static boolean vlReplaying = false;
+    private static boolean vlReplayErrorLogged = false;
+
+    private static void vlReplayDeferred() {
+        if (vlDeferred.isEmpty()) return;
+
+        java.util.List<Runnable> jobs = new java.util.ArrayList<>(vlDeferred);
+        vlDeferred.clear();
+
+        vlReplaying = true;
+        try {
+            for (Runnable job : jobs) {
+                try {
+                    job.run();
+                } catch (Throwable t) {
+                    if (!vlReplayErrorLogged) {
+                        vlReplayErrorLogged = true;
+                        MeteorClient.LOG.error("A relocated Vanilla HUD element threw while redrawing (further errors from this are not logged)", t);
+                    }
+                }
+            }
+        } finally {
+            vlReplaying = false;
+        }
+    }
+
+    @Shadow private int titleRemainTicks;
+    @Shadow private int titleFadeInTicks;
+    @Shadow private int titleStayTicks;
+    @Shadow private int titleFadeOutTicks;
+
+    @Shadow protected abstract void renderScoreboardSidebar(DrawContext context, ScoreboardObjective objective);
+    @Shadow protected abstract void renderOverlayMessage(DrawContext context, RenderTickCounter tickCounter);
+    @Shadow protected abstract void renderHeldItemTooltip(DrawContext context);
+    @Shadow protected abstract void renderExperienceBar(DrawContext context, int x);
+    @Shadow protected abstract void renderExperienceLevel(DrawContext context, RenderTickCounter tickCounter);
+    @Shadow protected abstract void renderHotbar(DrawContext context, RenderTickCounter tickCounter);
+    @Shadow protected abstract void renderHealthBar(DrawContext context, PlayerEntity player, int x, int y, int lines, int regeneratingHeartIndex, float maxHealth, int lastHealth, int health, int absorption, boolean blinking);
+    @Shadow protected abstract void renderFood(DrawContext context, PlayerEntity player, int top, int right);
+    @Shadow protected abstract void renderMountHealth(DrawContext context);
+    @Shadow private static void renderArmor(DrawContext context, PlayerEntity player, int i, int j, int k, int x) {
+        throw new AssertionError();
+    }
+
+
+
     @Shadow protected abstract boolean shouldRenderExperience();
 
     @Inject(method = "render", at = @At("TAIL"))
     private void onRender(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        vlReplayDeferred();
+
         client.getProfiler().push(MeteorClient.MOD_ID + "_render_2d");
 
         Utils.unscaledProjection();
@@ -120,6 +181,7 @@ public abstract class InGameHudMixin {
     // predates @Inject's "order" field, so that's the only ordering control available).
     @Inject(method = "renderScoreboardSidebar(Lnet/minecraft/client/gui/DrawContext;Lnet/minecraft/scoreboard/ScoreboardObjective;)V", at = @At("HEAD"))
     private void onRenderScoreboardSidebarForReaderNotif(DrawContext context, ScoreboardObjective objective, CallbackInfo ci) {
+        if (vlReplaying) return;
         MeteorClient.EVENT_BUS.post(RenderScoreboardEvent.get(objective));
     }
 
@@ -133,52 +195,32 @@ public abstract class InGameHudMixin {
         if (Modules.get().get(NoRender.class).noScoreboard()) ci.cancel();
     }
 
-    // Declared after the NoRender-cancel hook above so this never pushes when that will cancel -
-    // same reasoning as the other Vanilla elements' own hide checks.
-    //
-    // Unconfirmed live: vanilla's own sidebar body draws via context.draw(Runnable) - a DEFERRED
-    // callback rather than an inline draw - so this transform needs to still be on the matrix stack
-    // whenever that callback actually executes, not just during this method's own head-to-tail
-    // window. If Minecraft's LayeredDrawer flushes each layer's queued draws before the next layer
-    // starts (plausible, given rendering is single-threaded and layers render in sequence), a plain
-    // TAIL pop here still brackets the flush correctly - but this hasn't been verified against the
-    // real game yet, unlike every other Vanilla element in this file.
-    private boolean vanillaScoreboardPushed = false;
-
-    @Inject(method = "renderScoreboardSidebar(Lnet/minecraft/client/gui/DrawContext;Lnet/minecraft/scoreboard/ScoreboardObjective;)V", at = @At("HEAD"))
+    // Declared after the NoRender-cancel hook above so this never defers when that will cancel.
+    @Inject(method = "renderScoreboardSidebar(Lnet/minecraft/client/gui/DrawContext;Lnet/minecraft/scoreboard/ScoreboardObjective;)V", at = @At("HEAD"), cancellable = true)
     private void onRenderScoreboardPositionHead(DrawContext context, ScoreboardObjective objective, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaScoreboardHud element = findVanillaElement(VanillaScoreboardHud.class);
         if (element == null || Modules.get().get(NoRender.class).noScoreboard()) return;
 
-        if (element.isHidden()) {
-            // Off-screen rather than cancelling: this injection is HEAD of the real body (not the
-            // whole-method-wrap pattern the simpler elements use), and vanilla's own scoreboard
-            // width/position math runs inside the deferred draw() callback below this point, not
-            // before it - cancelling here is actually safe (nothing has been pushed yet either
-            // way), but pushing off-screen keeps this element's behavior consistent with
-            // Title/Subtitle, which genuinely can't cancel safely.
-            pushVanillaTransform(context, 1_000_000.0, 1_000_000.0, 1, 0, 0, 0, 0, 0);
-            vanillaScoreboardPushed = true;
-            return;
-        }
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        double defaultX = context.getScaledWindowWidth() - 3;
-        double defaultY = context.getScaledWindowHeight() / 2.0;
-        double scale = guiScaleFactor(context);
+        vlDeferred.add(() -> {
+            double defaultX = context.getScaledWindowWidth() - 3;
+            double defaultY = context.getScaledWindowHeight() / 2.0;
+            double scale = guiScaleFactor(context);
 
-        double centerX = element.x + element.getWidth() / 2.0;
-        double centerY = element.y + element.getHeight() / 2.0;
+            double centerX = element.x + element.getWidth() / 2.0;
+            double centerY = element.y + element.getHeight() / 2.0;
 
-        pushVanillaTransform(context, centerX / scale, centerY / scale, element.getScale() / scale, defaultX, defaultY, element.getRotation(), centerX / scale, centerY / scale, element.alpha.get() / 255.0);
-        vanillaScoreboardPushed = true;
-    }
-
-    @Inject(method = "renderScoreboardSidebar(Lnet/minecraft/client/gui/DrawContext;Lnet/minecraft/scoreboard/ScoreboardObjective;)V", at = @At("TAIL"))
-    private void onRenderScoreboardPositionTail(DrawContext context, ScoreboardObjective objective, CallbackInfo ci) {
-        if (vanillaScoreboardPushed) {
-            popVanillaTransform(context);
-            vanillaScoreboardPushed = false;
-        }
+            pushVanillaTransform(context, centerX / scale, centerY / scale, element.getScale() / scale, defaultX, defaultY, element.getRotation(), centerX / scale, centerY / scale, element.alpha.get() / 255.0);
+            try {
+                renderScoreboardSidebar(context, objective);
+            } finally {
+                popVanillaTransform(context);
+            }
+        });
     }
 
     @Inject(method = "renderSpyglassOverlay", at = @At("HEAD"), cancellable = true)
@@ -188,7 +230,7 @@ public abstract class InGameHudMixin {
 
     @ModifyExpressionValue(method = "renderCrosshair", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/option/Perspective;isFirstPerson()Z"))
     private boolean alwaysRenderCrosshairInFreecam(boolean firstPerson) {
-        return Modules.get().isActive(Freecam.class) || firstPerson;
+        return firstPerson || Modules.get().isActive(Freecam.class) || Modules.get().get(NoRender.class).crosshairInThirdPerson();
     }
 
     @Inject(method = "renderCrosshair", at = @At("HEAD"), cancellable = true)
@@ -196,12 +238,21 @@ public abstract class InGameHudMixin {
         if (Modules.get().get(NoRender.class).noCrosshair()) ci.cancel();
     }
 
-    // Reader Notif (NoiseNotif module): lets rules watch the title/subtitle text - only posted
-    // while one is actually showing, same as vanilla only renders it then. Declared before the
-    // NoRender cancel hook below so it still fires even if that one cancels the callback.
-    @Inject(method = "renderTitleAndSubtitle", at = @At("HEAD"))
-    private void onRenderTitleForReaderNotif(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        if (title != null) MeteorClient.EVENT_BUS.post(RenderTitleEvent.get(title, subtitle));
+    // Reader Notif (NoiseNotif module): lets rules watch the title/subtitle text - posted once
+    // right when the server actually (re)sets either one, not once per rendered frame while it
+    // happens to still be on screen. The old per-frame approach (re-checking every frame a title
+    // was visible, gated by a time-based per-rule cooldown) meant a title on screen longer than
+    // that cooldown re-triggered a second time near the end, during its own fade-out - the exact
+    // same title "renewal", counted twice. Hooking the actual set calls instead means this only
+    // ever fires once per genuine renewal, matching however many times the server actually sends one.
+    @Inject(method = "setTitle", at = @At("TAIL"))
+    private void onSetTitle(Text titleArg, CallbackInfo ci) {
+        MeteorClient.EVENT_BUS.post(TitleSetEvent.get(title, subtitle));
+    }
+
+    @Inject(method = "setSubtitle", at = @At("TAIL"))
+    private void onSetSubtitle(Text subtitleArg, CallbackInfo ci) {
+        MeteorClient.EVENT_BUS.post(TitleSetEvent.get(title, subtitle));
     }
 
     @Inject(method = "renderTitleAndSubtitle", at = @At("HEAD"), cancellable = true)
@@ -209,170 +260,121 @@ public abstract class InGameHudMixin {
         if (Modules.get().get(NoRender.class).noTitle()) ci.cancel();
     }
 
-    // Vanilla draws title and subtitle as two separate inner push/scale/draw/pop blocks sharing one
-    // outer translate(width/2, height/2) anchor (see renderTitleAndSubtitle's own decompiled body:
-    // outer push+translate, then a title block scaled 4x, then - if a subtitle is set - a second
-    // block scaled 2x, then outer pop). Rather than wrapping the whole method as one rigid unit
-    // (moving title+subtitle together), each inner block gets its own independent transform,
-    // injected right after that block's own vanilla push() (so it nests inside vanilla's own
-    // push/pop and gets discarded cleanly with it) and popped right before that block's own vanilla
-    // pop(). ordinal 0 = title's own scale(4,4,4)/pop() call, ordinal 1 = subtitle's scale(2,2,2)/
-    // pop() (only reached if a subtitle is actually showing - fine, since Mixin ordinals are
-    // bytecode-position-based, not runtime-execution-count-based).
-    //
-    // By the injection point, vanilla's own outer translate(width/2, height/2) has ALREADY run, so
-    // the current local origin already equals screen-center - "vanilla's default anchor" from this
-    // point on is effectively (0, 0) in the current frame, not the outer defaultX/defaultY the
-    // other Vanilla elements use. elementX/elementY here are instead the DELTA from that
-    // already-centered origin to the element's own desired box center - same value doubles as the
-    // rotation pivot, matching every other Vanilla element's pivot = its own box center.
-    private static final double OFFSCREEN = 1_000_000.0;
+    // Title / Subtitle: unlike the other Vanilla* elements these are NOT vanilla's own draw moved
+    // around - vanilla's title code is cancelled and the text is drawn here from vanilla's own title
+    // state (same fade timing, same background), at the elements' own position/scale. The old approach
+    // injected into the middle of vanilla's title method (pushing at each inner scale() call and
+    // popping before each inner pop()), which is what was disturbing the chat and tab list scale.
+    // Drawn deferred (end of the HUD pass), contained in one push / try / finally / pop each.
+    @Inject(method = "renderTitleAndSubtitle", at = @At("HEAD"), cancellable = true)
+    private void onRenderTitleReplace(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
 
-    private boolean vanillaTitlePushed = false;
-    private boolean vanillaSubtitlePushed = false;
+        VanillaTitleHud titleElement = findVanillaElement(VanillaTitleHud.class);
+        VanillaSubtitleHud subtitleElement = findVanillaElement(VanillaSubtitleHud.class);
+        if (titleElement == null && subtitleElement == null) return;
+        if (Modules.get().get(NoRender.class).noTitle()) return;
 
-    private boolean titleDebugLogged = false;
+        ci.cancel();
 
-    @Inject(
-        method = "renderTitleAndSubtitle",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;scale(FFF)V", ordinal = 0)
-    )
-    private void onRenderTitlePositionHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        VanillaTitleHud element = findVanillaElement(VanillaTitleHud.class);
+        Text titleText = title;
+        Text subtitleText = subtitle;
+        if (titleText == null || titleRemainTicks <= 0) return;
 
-        // Temporary one-shot diagnostic (fires at most once per game session, only when a real
-        // title actually renders) - remove once the "title relocation doesn't work" report is
-        // resolved.
-        if (!titleDebugLogged) {
-            titleDebugLogged = true;
-            MeteorClient.LOG.info("[VL+ debug] onRenderTitlePositionHead fired. element={}, hidden={}, noTitle={}, x={}, y={}, w={}, h={}, scaleSetting={}",
-                element, element != null ? element.isHidden() : "n/a", Modules.get().get(NoRender.class).noTitle(),
-                element != null ? element.x : "n/a", element != null ? element.y : "n/a",
-                element != null ? element.getWidth() : "n/a", element != null ? element.getHeight() : "n/a",
-                element != null ? element.getScale() : "n/a");
+        // Same fade math as vanilla's own renderTitleAndSubtitle.
+        float remaining = (float) titleRemainTicks - tickCounter.getTickDelta(false);
+        int alpha = 255;
+
+        if (titleRemainTicks > titleFadeOutTicks + titleStayTicks) {
+            float elapsed = (float) (titleFadeInTicks + titleStayTicks + titleFadeOutTicks) - remaining;
+            alpha = (int) (elapsed * 255.0F / (float) titleFadeInTicks);
         }
 
-        if (element == null || Modules.get().get(NoRender.class).noTitle()) return;
+        if (titleRemainTicks <= titleFadeOutTicks) alpha = (int) (remaining * 255.0F / (float) titleFadeOutTicks);
 
-        // Hide: pushed off-screen rather than cancelling the callback here - this injection point
-        // is mid-method (inside vanilla's own outer push/translate AND its own inner push, since it
-        // has to nest inside those to get discarded cleanly with them - see the block comment
-        // above), so cancelling here would skip vanilla's own remaining pop() calls entirely,
-        // leaking un-popped matrices onto the stack for the rest of the frame. Moving the content
-        // instead keeps the exact same push/pop pairing regardless of hidden state.
-        if (element.isHidden()) {
-            pushVanillaTransform(context, OFFSCREEN, OFFSCREEN, 1, 0, 0, 0, 0, 0);
-            vanillaTitlePushed = true;
-            return;
-        }
+        alpha = MathHelper.clamp(alpha, 0, 255);
+        if (alpha <= 8) return;
 
-        double scale = guiScaleFactor(context);
-        double defaultCenterX = context.getScaledWindowWidth() / 2.0;
-        double defaultCenterY = context.getScaledWindowHeight() / 2.0;
+        int finalAlpha = alpha;
 
-        double dx = (element.x + element.getWidth() / 2.0) / scale - defaultCenterX;
-        double dy = (element.y + element.getHeight() / 2.0) / scale - defaultCenterY;
+        vlDeferred.add(() -> {
+            double guiScale = guiScaleFactor(context);
+            int w = context.getScaledWindowWidth(), h = context.getScaledWindowHeight();
 
-        if (!titleDebugLogged2) {
-            titleDebugLogged2 = true;
-            MeteorClient.LOG.info("[VL+ debug] onRenderTitlePositionHead pushing. guiScale={}, scaledWindow={}x{}, defaultCenter=({}, {}), dx={}, dy={}, contentScale={}, rotation={}",
-                scale, context.getScaledWindowWidth(), context.getScaledWindowHeight(), defaultCenterX, defaultCenterY,
-                dx, dy, element.getScale() / scale, element.getRotation());
-        }
+            // Vanilla's own anchor: screen centre, title at 4x, subtitle at 2x; y is text-top offset.
+            if (titleElement == null) drawTitleText(context, titleText, finalAlpha, w / 2.0, h / 2.0 + (-10 + 4) * 4, 4, 0);
+            else if (!titleElement.isHidden()) {
+                double cx = (titleElement.x + titleElement.getWidth() / 2.0) / guiScale;
+                double cy = (titleElement.y + titleElement.getHeight() / 2.0) / guiScale;
+                drawTitleText(context, titleText, (int) (finalAlpha * titleElement.alpha.get() / 255.0), cx, cy, 4 * titleElement.getScale() / guiScale, titleElement.getRotation());
+            }
 
-        pushVanillaTransform(context, dx, dy, element.getScale() / scale, 0, 0, element.getRotation(), dx, dy, element.alpha.get() / 255.0);
-        vanillaTitlePushed = true;
+            if (subtitleText == null) return;
+
+            if (subtitleElement == null) drawTitleText(context, subtitleText, finalAlpha, w / 2.0, h / 2.0 + (5 + 4) * 2, 2, 0);
+            else if (!subtitleElement.isHidden()) {
+                double cx = (subtitleElement.x + subtitleElement.getWidth() / 2.0) / guiScale;
+                double cy = (subtitleElement.y + subtitleElement.getHeight() / 2.0) / guiScale;
+                drawTitleText(context, subtitleText, (int) (finalAlpha * subtitleElement.alpha.get() / 255.0), cx, cy, 2 * subtitleElement.getScale() / guiScale, subtitleElement.getRotation());
+            }
+        });
     }
 
-    private boolean titleDebugLogged2 = false;
-    private boolean titleDebugLogged3 = false;
+    /** One title/subtitle line, centred on (centerX, centerY) in GUI units, contained in its own push/pop. */
+    private void drawTitleText(DrawContext context, Text text, int alpha, double centerX, double centerY, double scale, double rotation) {
+        if (alpha <= 8) return;
 
-    @Inject(
-        method = "renderTitleAndSubtitle",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;pop()V", ordinal = 0)
-    )
-    private void onRenderTitlePositionTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        if (!titleDebugLogged3) {
-            titleDebugLogged3 = true;
-            MeteorClient.LOG.info("[VL+ debug] onRenderTitlePositionTail fired. vanillaTitlePushed={}", vanillaTitlePushed);
-        }
+        MatrixStack matrices = context.getMatrices();
+        matrices.push();
+        RenderSystem.enableBlend();
 
-        if (vanillaTitlePushed) {
-            popVanillaTransform(context);
-            vanillaTitlePushed = false;
-        }
-    }
+        try {
+            matrices.translate(centerX, centerY, 0);
+            if (rotation != 0) matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) rotation));
+            matrices.scale((float) scale, (float) scale, 1f);
 
-    @Inject(
-        method = "renderTitleAndSubtitle",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;scale(FFF)V", ordinal = 1)
-    )
-    private void onRenderSubtitlePositionHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        VanillaSubtitleHud element = findVanillaElement(VanillaSubtitleHud.class);
-        if (element == null || Modules.get().get(NoRender.class).noTitle()) return;
-
-        // See onRenderTitlePositionHead's comment on why hidden pushes off-screen instead of
-        // cancelling this mid-method injection point.
-        if (element.isHidden()) {
-            pushVanillaTransform(context, OFFSCREEN, OFFSCREEN, 1, 0, 0, 0, 0, 0);
-            vanillaSubtitlePushed = true;
-            return;
-        }
-
-        double scale = guiScaleFactor(context);
-        double defaultCenterX = context.getScaledWindowWidth() / 2.0;
-        double defaultCenterY = context.getScaledWindowHeight() / 2.0;
-
-        double dx = (element.x + element.getWidth() / 2.0) / scale - defaultCenterX;
-        double dy = (element.y + element.getHeight() / 2.0) / scale - defaultCenterY;
-
-        pushVanillaTransform(context, dx, dy, element.getScale() / scale, 0, 0, element.getRotation(), dx, dy, element.alpha.get() / 255.0);
-        vanillaSubtitlePushed = true;
-    }
-
-    @Inject(
-        method = "renderTitleAndSubtitle",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/util/math/MatrixStack;pop()V", ordinal = 1)
-    )
-    private void onRenderSubtitlePositionTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        if (vanillaSubtitlePushed) {
-            popVanillaTransform(context);
-            vanillaSubtitlePushed = false;
+            int width = client.textRenderer.getWidth(text);
+            context.drawTextWithBackground(client.textRenderer, text, -width / 2, -4, width, ColorHelper.Argb.withAlpha(alpha, -1));
+        } finally {
+            RenderSystem.disableBlend();
+            matrices.pop();
         }
     }
 
     // Action bar (renderOverlayMessage) is its own separate vanilla method with only one draw call,
     // so - unlike title/subtitle above - the whole-method wrap pattern (see e.g. onRenderHotbarHead)
     // applies directly here.
-    private boolean vanillaActionBarPushed = false;
-
-    @Inject(method = "renderOverlayMessage", at = @At("HEAD"), cancellable = true)
-    private void onRenderActionBarPositionHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        VanillaActionBarHud element = findVanillaElement(VanillaActionBarHud.class);
-        if (element == null) return;
-
-        if (element.isHidden()) {
-            ci.cancel();
-            return;
-        }
-
-        double defaultX = context.getScaledWindowWidth() / 2.0;
-        double defaultY = context.getScaledWindowHeight() - 68.0;
+    private void vlDeferWithTransform(DrawContext context, HudElement element, double defaultX, double defaultY, Runnable draw) {
+        // element positions are the box CENTER for text-like elements (see callers) - shared helper
+        // for the simple "same vanilla call, relocated" elements below.
         double scale = guiScaleFactor(context);
-
         double centerX = element.x + element.getWidth() / 2.0;
         double centerY = element.y + element.getHeight() / 2.0;
 
-        pushVanillaTransform(context, centerX / scale, centerY / scale, element.getScale() / scale, defaultX, defaultY, element.getRotation(), centerX / scale, centerY / scale, element.alpha.get() / 255.0);
-        vanillaActionBarPushed = true;
+        double contentScale = element instanceof VanillaActionBarHud a ? a.getScale() : ((VanillaItemNameHud) element).getScale();
+        int rotation = element instanceof VanillaActionBarHud a2 ? a2.getRotation() : ((VanillaItemNameHud) element).getRotation();
+
+        pushVanillaTransform(context, centerX / scale, centerY / scale, contentScale / scale, defaultX, defaultY, rotation, centerX / scale, centerY / scale, element.alpha.get() / 255.0);
+        try {
+            draw.run();
+        } finally {
+            popVanillaTransform(context);
+        }
     }
 
-    @Inject(method = "renderOverlayMessage", at = @At("TAIL"))
-    private void onRenderActionBarPositionTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        if (vanillaActionBarPushed) {
-            popVanillaTransform(context);
-            vanillaActionBarPushed = false;
-        }
+    @Inject(method = "renderOverlayMessage", at = @At("HEAD"), cancellable = true)
+    private void onRenderActionBarPositionHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
+        VanillaActionBarHud element = findVanillaElement(VanillaActionBarHud.class);
+        if (element == null) return;
+
+        ci.cancel();
+        if (element.isHidden()) return;
+
+        vlDeferred.add(() -> vlDeferWithTransform(context, element,
+            context.getScaledWindowWidth() / 2.0, context.getScaledWindowHeight() - 68.0,
+            () -> renderOverlayMessage(context, tickCounter)));
     }
 
     @Inject(method = "renderHeldItemTooltip", at = @At("HEAD"), cancellable = true)
@@ -380,37 +382,20 @@ public abstract class InGameHudMixin {
         if (Modules.get().get(NoRender.class).noHeldItemName()) ci.cancel();
     }
 
-    // Held item name popup: a single drawTextWithBackground call with no matrix work of its own
-    // (unlike Title/Subtitle), so the whole-method wrap pattern applies directly, same as Action Bar.
-    private boolean vanillaItemNamePushed = false;
-
+    // Held item name popup / action bar: same "cancel in place, redraw the same vanilla call at the end" scheme as every Vanilla* element.
     @Inject(method = "renderHeldItemTooltip", at = @At("HEAD"), cancellable = true)
     private void onRenderItemNamePositionHead(DrawContext context, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaItemNameHud element = findVanillaElement(VanillaItemNameHud.class);
         if (element == null) return;
 
-        if (element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        double defaultX = context.getScaledWindowWidth() / 2.0;
-        double defaultY = context.getScaledWindowHeight() - 59 + (client.interactionManager.hasStatusBars() ? 0 : 14);
-        double scale = guiScaleFactor(context);
-
-        double centerX = element.x + element.getWidth() / 2.0;
-        double centerY = element.y + element.getHeight() / 2.0;
-
-        pushVanillaTransform(context, centerX / scale, centerY / scale, element.getScale() / scale, defaultX, defaultY, element.getRotation(), centerX / scale, centerY / scale, element.alpha.get() / 255.0);
-        vanillaItemNamePushed = true;
-    }
-
-    @Inject(method = "renderHeldItemTooltip", at = @At("TAIL"))
-    private void onRenderItemNamePositionTail(DrawContext context, CallbackInfo ci) {
-        if (vanillaItemNamePushed) {
-            popVanillaTransform(context);
-            vanillaItemNamePushed = false;
-        }
+        vlDeferred.add(() -> vlDeferWithTransform(context, element,
+            context.getScaledWindowWidth() / 2.0, context.getScaledWindowHeight() - 59 + (client.interactionManager.hasStatusBars() ? 0 : 14),
+            () -> renderHeldItemTooltip(context)));
     }
 
     @Inject(method = "clear", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/hud/ChatHud;clear(Z)V"), cancellable = true)
@@ -439,46 +424,39 @@ public abstract class InGameHudMixin {
     // always safe (unlike renderExperienceLevel below, which XPLevelAdjust can cancel).
     @Inject(method = "renderExperienceBar", at = @At("HEAD"), cancellable = true)
     private void onRenderExperienceBarPositionHead(DrawContext context, int x, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         if (Modules.get().get(XPBarAdjust.class).shouldAutoHide()) {
             ci.cancel();
             return;
         }
 
         VanillaXPBarHud element = findVanillaElement(VanillaXPBarHud.class);
-        if (element != null && element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        if (element == null) return;
 
-        double defaultX = x;
-        double defaultY = context.getScaledWindowHeight() - 32 + 3;
-        double scale = guiScaleFactor(context);
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        pushVanillaTransform(context,
-            element != null ? element.x / scale : defaultX, element != null ? element.y / scale : defaultY,
-            element != null ? element.getScaleX() / scale : 1, element != null ? element.getScaleY() / scale : 1, defaultX, defaultY,
-            element != null ? element.getRotation() : 0, element != null ? pivotX(element, scale) : 0, element != null ? pivotY(element, scale) : 0,
-            element != null ? element.alpha.get() / 255.0 : 1.0
-        );
+        // XPBarAdjust's own recolor hooks live inside renderExperienceBar itself, so they run on the
+        // redraw below and move/scale with the relocated bar for free.
+        vlDeferred.add(() -> {
+            double defaultX = x;
+            double defaultY = context.getScaledWindowHeight() - 32 + 3;
+            double scale = guiScaleFactor(context);
 
-        if (!xpBarDebugLogged) {
-            xpBarDebugLogged = true;
-            float[] c = RenderSystem.getShaderColor();
-            MeteorClient.LOG.info("[VL+ debug] onRenderExperienceBarPositionHead after push. element={}, alphaSetting={}, shaderColorAfterPush=({}, {}, {}, {})",
-                element, element != null ? element.alpha.get() : "n/a", c[0], c[1], c[2], c[3]);
-        }
-    }
+            pushVanillaTransform(context,
+                element.x / scale, element.y / scale,
+                element.getScaleX() / scale, element.getScaleY() / scale, defaultX, defaultY,
+                element.getRotation(), pivotX(element, scale), pivotY(element, scale),
+                element.alpha.get() / 255.0
+            );
 
-    private boolean xpBarDebugLogged = false;
-    private boolean xpBarDebugLogged2 = false;
-
-    @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", shift = At.Shift.BEFORE))
-    private void onRenderExperienceBarBeforeDraw(DrawContext context, int x, CallbackInfo ci) {
-        if (!xpBarDebugLogged2) {
-            xpBarDebugLogged2 = true;
-            float[] c = RenderSystem.getShaderColor();
-            MeteorClient.LOG.info("[VL+ debug] onRenderExperienceBarBeforeDraw (right before vanilla's own drawGuiTexture). shaderColor=({}, {}, {}, {})", c[0], c[1], c[2], c[3]);
-        }
+            try {
+                renderExperienceBar(context, x);
+            } finally {
+                popVanillaTransform(context);
+            }
+        });
     }
 
     @Inject(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", shift = At.Shift.AFTER))
@@ -525,13 +503,6 @@ public abstract class InGameHudMixin {
         RenderSystem.disableBlend();
     }
 
-    // Declared after onRenderExperienceBarProgress above so it pops after that hook's own overlay
-    // draw runs (see onRenderExperienceBarPositionHead's comment).
-    @Inject(method = "renderExperienceBar", at = @At("TAIL"))
-    private void onRenderExperienceBarPositionTail(DrawContext context, int x, CallbackInfo ci) {
-        popVanillaTransform(context);
-    }
-
     // XPLevelAdjust module: fully replaces vanilla's own draw (cancelled below) rather than
     // overlaying on top of it, since vanilla skips drawing entirely once the level is 0 - a plain
     // overlay could never implement On Zero's Hide/Custom Text/Distinct Color options, which all
@@ -570,77 +541,77 @@ public abstract class InGameHudMixin {
             argb = withAlphaMultiplied(argb, a);
         }
 
-        MatrixStack matrices = context.getMatrices();
-        matrices.push();
-        matrices.scale((float) scale, (float) scale, 1f);
+        final int argbF = argb;
+        final double scaleF = scale;
+        final int anchorXF = anchorX, anchorYF = anchorY;
+        final VanillaXPLevelHud relocatedF = relocated;
 
-        int outlineArgb = switch (module.getOutline()) {
-            case Black -> Color.BLACK.getPacked();
-            case White -> Color.WHITE.getPacked();
-            case Custom -> module.getCustomOutlineColor().getPacked();
-            case None -> 0;
-        };
+        vlDeferred.add(() -> {
+            MatrixStack matrices = context.getMatrices();
+            matrices.push();
 
-        if (relocated != null) outlineArgb = withAlphaMultiplied(outlineArgb, relocated.alpha.get() / 255.0);
+            try {
+                matrices.scale((float) scaleF, (float) scaleF, 1f);
+                int outlineArgb = switch (module.getOutline()) {
+                    case Black -> Color.BLACK.getPacked();
+                    case White -> Color.WHITE.getPacked();
+                    case Custom -> module.getCustomOutlineColor().getPacked();
+                    case None -> 0;
+                };
 
-        int width = client.textRenderer.getWidth(text);
-        int drawX = (int) Math.round(anchorX / scale - width / 2.0);
-        int drawY = (int) Math.round(anchorY / scale);
+                if (relocatedF != null) outlineArgb = withAlphaMultiplied(outlineArgb, relocatedF.alpha.get() / 255.0);
 
-        if (module.getOutline() != XPLevelAdjust.OutlineColor.None) {
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    if (dx == 0 && dy == 0) continue;
-                    context.drawText(client.textRenderer, text, drawX + dx, drawY + dy, outlineArgb, false);
+                int width = client.textRenderer.getWidth(text);
+                int drawX = (int) Math.round(anchorXF / scaleF - width / 2.0);
+                int drawY = (int) Math.round(anchorYF / scaleF);
+
+                if (module.getOutline() != XPLevelAdjust.OutlineColor.None) {
+                    for (int dx = -1; dx <= 1; dx++) {
+                        for (int dy = -1; dy <= 1; dy++) {
+                            if (dx == 0 && dy == 0) continue;
+                            context.drawText(client.textRenderer, text, drawX + dx, drawY + dy, outlineArgb, false);
+                        }
+                    }
                 }
+
+                context.drawText(client.textRenderer, text, drawX, drawY, argbF, module.getShadow());
+            } finally {
+                matrices.pop();
             }
-        }
-
-        context.drawText(client.textRenderer, text, drawX, drawY, argb, module.getShadow());
-
-        matrices.pop();
+        });
     }
-
-    // Only used for the "XPLevelAdjust inactive, vanilla draws its own body normally" path.
-    // onRenderExperienceLevel above handles relocation itself (see "relocated" there) when it's
-    // about to cancel and draw its own replacement text, since ci.cancel() would skip this file's
-    // own TAIL hook below too, leaving a pushed-but-never-popped matrix if this pair pushed
-    // unconditionally - checking the exact same activation condition here first avoids that.
-    private boolean vanillaXPLevelPushed = false;
 
     @Inject(method = "renderExperienceLevel", at = @At("HEAD"), cancellable = true)
     private void onRenderExperienceLevelPositionHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaXPLevelHud element = findVanillaElement(VanillaXPLevelHud.class);
         if (element == null || willXPLevelAdjustCancel()) return;
 
-        if (element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        // Vanilla's own renderExperienceLevel centers the number horizontally around the middle of
-        // the screen (j = (scaledWindowWidth - textWidth) / 2) - defaultX matches that same true
-        // anchor (its own top-left draw position). elementX below is NOT the box's own left edge
-        // (element.x) - it's shifted left by half the CURRENT text's width, so the text's own
-        // center (not its left edge) lands on the box's center regardless of digit count, matching
-        // vanilla's own centered behavior instead of just anchoring the first character.
-        String levelText = client.player != null ? String.valueOf(client.player.experienceLevel) : "0";
-        int width = client.textRenderer.getWidth(levelText);
-        double defaultX = (context.getScaledWindowWidth() - width) / 2.0;
-        double defaultY = context.getScaledWindowHeight() - 31 - 4;
-        double scale = guiScaleFactor(context);
-        double elementX = pivotX(element, scale) - width / 2.0;
+        vlDeferred.add(() -> {
+            // Vanilla's own renderExperienceLevel centers the number horizontally around the middle of
+            // the screen (j = (scaledWindowWidth - textWidth) / 2) - defaultX matches that same true
+            // anchor (its own top-left draw position). elementX below is NOT the box's own left edge
+            // (element.x) - it's shifted left by half the CURRENT text's width, so the text's own
+            // center (not its left edge) lands on the box's center regardless of digit count, matching
+            // vanilla's own centered behavior instead of just anchoring the first character.
+            String levelText = client.player != null ? String.valueOf(client.player.experienceLevel) : "0";
+            int width = client.textRenderer.getWidth(levelText);
+            double defaultX = (context.getScaledWindowWidth() - width) / 2.0;
+            double defaultY = context.getScaledWindowHeight() - 31 - 4;
+            double scale = guiScaleFactor(context);
+            double elementX = pivotX(element, scale) - width / 2.0;
 
-        pushVanillaTransform(context, elementX, element.y / scale, element.getScale() / scale, defaultX, defaultY, element.getRotation(), pivotX(element, scale), pivotY(element, scale), element.alpha.get() / 255.0);
-        vanillaXPLevelPushed = true;
-    }
-
-    @Inject(method = "renderExperienceLevel", at = @At("TAIL"))
-    private void onRenderExperienceLevelPositionTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        if (vanillaXPLevelPushed) {
-            popVanillaTransform(context);
-            vanillaXPLevelPushed = false;
-        }
+            pushVanillaTransform(context, elementX, element.y / scale, element.getScale() / scale, defaultX, defaultY, element.getRotation(), pivotX(element, scale), pivotY(element, scale), element.alpha.get() / 255.0);
+            try {
+                renderExperienceLevel(context, tickCounter);
+            } finally {
+                popVanillaTransform(context);
+            }
+        });
     }
 
     private boolean willXPLevelAdjustCancel() {
@@ -728,7 +699,15 @@ public abstract class InGameHudMixin {
         matrices.scale((float) contentScaleX, (float) contentScaleY, 1f);
         matrices.translate(-defaultX, -defaultY, 0);
 
-        if (alpha < 1.0) RenderSystem.setShaderColor(1f, 1f, 1f, (float) alpha);
+        if (alpha < 1.0) {
+            RenderSystem.setShaderColor(1f, 1f, 1f, (float) alpha);
+            // See ItemRenderAlphaState's own class doc - without this, builtin-model items (player
+            // heads, chests, anything routed through BuiltinModelItemRenderer) rendered as part of
+            // this relocated vanilla content (the hotbar's own items, most commonly) ignore the
+            // shader alpha above entirely, since they render through a solid/cutout layer instead
+            // of the translucent one that actually respects it.
+            ItemRenderAlphaState.forcingTranslucent = true;
+        }
     }
 
     // Pivot for rotation: the element's own HUD box center (the same box the editor shows/drags),
@@ -743,6 +722,7 @@ public abstract class InGameHudMixin {
 
     private void popVanillaTransform(DrawContext context) {
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        ItemRenderAlphaState.forcingTranslucent = false;
         context.getMatrices().pop();
     }
 
@@ -764,6 +744,16 @@ public abstract class InGameHudMixin {
     // Bar Adjust/Stamina Bar Adjust tint those, not just alpha).
     @Redirect(method = {"renderExperienceBar", "renderMountHealth"}, at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V"))
     private void redirectDrawGuiTextureAlpha(DrawContext context, Identifier texture, int x, int y, int width, int height) {
+        if (texture.getPath().equals("hud/experience_bar_background")) {
+            VanillaXPBarHud element = findVanillaElement(VanillaXPBarHud.class);
+            if (element != null && element.shouldPreventEndSquish() && element.getRawScaleX() != element.getRawScaleY()) {
+                float[] c = RenderSystem.getShaderColor();
+                Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
+                drawXpBarSliced(context, sprite, width, height, 0, 0, x, y, width, height, c[0], c[1], c[2], c[3], element.getRawScaleX(), element.getRawScaleY());
+                return;
+            }
+        }
+
         float[] c = RenderSystem.getShaderColor();
         if (c[3] >= 1.0f) {
             context.drawGuiTexture(texture, x, y, width, height);
@@ -772,6 +762,75 @@ public abstract class InGameHudMixin {
 
         Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
         ((IDrawContext) (Object) context).meteor$vlPlusDrawColoredSprite(sprite, x, y, 0, width, height, c[0], c[1], c[2], c[3]);
+    }
+
+    // Vanilla XP Bar's Prevent Squished Ends: redraws the background texture as 5 pieces (top/
+    // bottom/left/right 1px border strips + the center body) instead of vanilla's own single
+    // stretched draw. Each border strip gets a local matrix correction, anchored at whichever edge
+    // must stay fixed (the far edge from the bar's center), that cancels out just the non-uniform
+    // "extra" stretch (rawScaleX/rawScaleY, on top of the element's own overall Scale) along its
+    // short axis - keeping its thickness fixed and uniform regardless of how differently Scale X and
+    // Scale Y are set, while the body between them (a noisy gradient texture, not a flat color)
+    // still stretches normally. Without this, a large scale mismatch visibly smears/elongates the
+    // border pixels especially near the bar's rounded corners, reading as "squished" ends.
+    private void drawXpBarSliced(DrawContext context, Sprite sprite, int fullWidth, int fullHeight, int frameX, int frameY, int x, int y, int width, int height, float r, float g, float b, float a, double rawScaleX, double rawScaleY) {
+        IDrawContext idc = (IDrawContext) (Object) context;
+        MatrixStack matrices = context.getMatrices();
+
+        int w = Math.min(width, fullWidth - frameX);
+        int h = height;
+
+        // Correcting the taller/wider axis all the way down to a fixed "scale-only" baseline works
+        // fine when the bar is stretched TALL relative to its width, but breaks the other direction:
+        // if Scale X is shrunk well below Scale Y (a narrow bar), a border strip corrected to that
+        // same fixed baseline thickness can end up wider than the whole narrowed bar. Correcting
+        // toward whichever raw axis is SMALLER instead - never toward a fixed baseline - fixes both
+        // directions symmetrically: the smaller axis is always left uncorrected (correction factor
+        // 1), so a border strip can never end up thicker than the bar's own narrower dimension.
+        double minRawScale = Math.min(rawScaleX, rawScaleY);
+        double correctionX = minRawScale / rawScaleX;
+        double correctionY = minRawScale / rawScaleY;
+
+        // Top strip (row 0) - anchored at the top edge, Y-corrected, thickness extends downward.
+        pushAxisCorrection(matrices, x, y, 1.0, correctionY);
+        idc.meteor$vlPlusDrawColoredFrameSprite(sprite, fullWidth, fullHeight, frameX, frameY, x, y, 0, w, 1, r, g, b, a);
+        matrices.pop();
+
+        // Bottom strip (last row) - anchored at the bottom edge, Y-corrected, thickness extends up.
+        if (h > 1) {
+            pushAxisCorrection(matrices, x, y + h, 1.0, correctionY);
+            idc.meteor$vlPlusDrawColoredFrameSprite(sprite, fullWidth, fullHeight, frameX, frameY + h - 1, x, y + h - 1, 0, w, 1, r, g, b, a);
+            matrices.pop();
+        }
+
+        // Left strip (col 0) - anchored at the left edge, X-corrected, thickness extends right.
+        pushAxisCorrection(matrices, x, y, correctionX, 1.0);
+        idc.meteor$vlPlusDrawColoredFrameSprite(sprite, fullWidth, fullHeight, frameX, frameY, x, y, 0, 1, h, r, g, b, a);
+        matrices.pop();
+
+        // Right strip (last col of this crop) - only a real "end" if this crop reaches the texture's
+        // actual right edge (always true for the background, never cropped) - anchored at the right
+        // edge, X-corrected, thickness extends left.
+        if (w > 1 && frameX + w >= fullWidth) {
+            pushAxisCorrection(matrices, x + w, y, correctionX, 1.0);
+            idc.meteor$vlPlusDrawColoredFrameSprite(sprite, fullWidth, fullHeight, frameX + w - 1, frameY, x + w - 1, y, 0, 1, h, r, g, b, a);
+            matrices.pop();
+        }
+
+        // Center body - untouched ambient scale, excluding the border rows/columns already drawn.
+        if (w > 2 && h > 2) {
+            idc.meteor$vlPlusDrawColoredFrameSprite(sprite, fullWidth, fullHeight, frameX + 1, frameY + 1, x + 1, y + 1, 0, w - 2, h - 2, r, g, b, a);
+        }
+    }
+
+    // Pushes a matrix correction anchored at (anchorX, anchorY) - that exact point stays fixed on
+    // screen, everything drawn relative to it scales by (correctionX, correctionY) on top of
+    // whatever ambient scale is already active. Caller must matrices.pop() after drawing.
+    private void pushAxisCorrection(MatrixStack matrices, double anchorX, double anchorY, double correctionX, double correctionY) {
+        matrices.push();
+        matrices.translate(anchorX, anchorY, 0);
+        matrices.scale((float) correctionX, (float) correctionY, 1f);
+        matrices.translate(-anchorX, -anchorY, 0);
     }
 
     // Health Bar Adjust: tints the real hearts, same "Colorize" idea as XP Bar Adjust's own texture
@@ -871,6 +930,16 @@ public abstract class InGameHudMixin {
     // PROGRESS_TEXTURE, 182, 5, 0, 0, x, y, progressWidth, 5)).
     @Redirect(method = "renderExperienceBar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIIIIIII)V"))
     private void redirectDrawGuiTextureFrameAlpha(DrawContext context, Identifier texture, int fullWidth, int fullHeight, int frameX, int frameY, int x, int y, int width, int height) {
+        if (texture.getPath().equals("hud/experience_bar_progress")) {
+            VanillaXPBarHud element = findVanillaElement(VanillaXPBarHud.class);
+            if (element != null && element.shouldPreventEndSquish() && element.getRawScaleX() != element.getRawScaleY()) {
+                float[] c = RenderSystem.getShaderColor();
+                Sprite sprite = client.getGuiAtlasManager().getSprite(texture);
+                drawXpBarSliced(context, sprite, fullWidth, fullHeight, frameX, frameY, x, y, width, height, c[0], c[1], c[2], c[3], element.getRawScaleX(), element.getRawScaleY());
+                return;
+            }
+        }
+
         float[] c = RenderSystem.getShaderColor();
         if (c[3] >= 1.0f) {
             context.drawGuiTexture(texture, fullWidth, fullHeight, frameX, frameY, x, y, width, height);
@@ -883,74 +952,154 @@ public abstract class InGameHudMixin {
 
     @Inject(method = "renderHotbar", at = @At("HEAD"), cancellable = true)
     private void onRenderHotbarHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
-        if (element != null && element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        if (element == null) return;
 
-        double defaultX = context.getScaledWindowWidth() / 2.0 - 91;
-        double defaultY = context.getScaledWindowHeight() - 22;
-        double scale = guiScaleFactor(context);
-        double rotation = element != null ? element.getRotation() : 0;
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        pushVanillaTransform(context,
-            element != null ? element.x / scale : defaultX, element != null ? element.y / scale : defaultY,
-            element != null ? element.getScale() / scale : 1, defaultX, defaultY,
-            rotation, element != null ? pivotX(element, scale) : 0, element != null ? pivotY(element, scale) : 0,
-            element != null ? element.alpha.get() / 255.0 : 1.0
-        );
+        vlDeferred.add(() -> {
+            double defaultX = context.getScaledWindowWidth() / 2.0 - 91;
+            double defaultY = context.getScaledWindowHeight() - 22;
+            double scale = guiScaleFactor(context);
+            double rotation = element.getRotation();
 
-        VanillaHudRotationState.hotbarItemCounterRotation = (element != null && rotation != 0 && element.keepItemsUpright()) ? -rotation : 0;
+            pushVanillaTransform(context,
+                element.x / scale, element.y / scale,
+                element.getScale() / scale, defaultX, defaultY,
+                rotation, pivotX(element, scale), pivotY(element, scale),
+                element.alpha.get() / 255.0
+            );
+
+            VanillaHudRotationState.hotbarItemCounterRotation = (rotation != 0 && element.keepItemsUpright()) ? -rotation : 0;
+
+            try {
+                renderHotbar(context, tickCounter);
+            } finally {
+                popVanillaTransform(context);
+                VanillaHudRotationState.hotbarItemCounterRotation = 0;
+            }
+        });
     }
 
-    @Inject(method = "renderHotbar", at = @At("TAIL"))
-    private void onRenderHotbarTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        popVanillaTransform(context);
-        VanillaHudRotationState.hotbarItemCounterRotation = 0;
+    // Vanilla Hotbar's 3 independent alphas (item/background/selector) instead of one shared value.
+    // renderHotbar's own drawGuiTexture(Identifier,int,int,int,int) call sites, in bytecode order:
+    // ordinal 0 = the main hotbar frame (HOTBAR_TEXTURE), 1 = the selected-slot highlight
+    // (HOTBAR_SELECTION_TEXTURE), 2/3 = the offhand slot frame (LEFT/RIGHT - mutually exclusive at
+    // runtime, but both count as their own static call site for ordinal purposes) - the attack
+    // indicator's own two draws come after these and are intentionally left alone, still only
+    // affected by the general Alpha setting above like before.
+
+    @Redirect(method = "renderHotbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", ordinal = 0))
+    private void redirectHotbarBackground(DrawContext context, Identifier texture, int x, int y, int width, int height) {
+        VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
+        if (element != null) RenderSystem.setShaderColor(1f, 1f, 1f, (float) element.getBackgroundAlpha());
+        context.drawGuiTexture(texture, x, y, width, height);
+    }
+
+    @Redirect(method = "renderHotbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", ordinal = 1))
+    private void redirectHotbarSelector(DrawContext context, Identifier texture, int x, int y, int width, int height) {
+        VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
+        if (element != null) RenderSystem.setShaderColor(1f, 1f, 1f, (float) element.getSelectorAlpha());
+        context.drawGuiTexture(texture, x, y, width, height);
+    }
+
+    @Redirect(method = "renderHotbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", ordinal = 2))
+    private void redirectHotbarOffhandLeft(DrawContext context, Identifier texture, int x, int y, int width, int height) {
+        VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
+        if (element != null) RenderSystem.setShaderColor(1f, 1f, 1f, (float) element.getBackgroundAlpha());
+        context.drawGuiTexture(texture, x, y, width, height);
+    }
+
+    @Redirect(method = "renderHotbar", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/DrawContext;drawGuiTexture(Lnet/minecraft/util/Identifier;IIII)V", ordinal = 3))
+    private void redirectHotbarOffhandRight(DrawContext context, Identifier texture, int x, int y, int width, int height) {
+        VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
+        if (element != null) RenderSystem.setShaderColor(1f, 1f, 1f, (float) element.getBackgroundAlpha());
+        context.drawGuiTexture(texture, x, y, width, height);
+    }
+
+    // Items: renderHotbarItem is called once per slot (main hand loop + offhand) - bracketing the
+    // whole thing per-call, rather than trying to set the color once before the loop and hope it
+    // survives untouched, since item rendering commonly resets shader color internally per item
+    // (enchant glint, etc). Also flips ItemRenderAlphaState.forcingTranslucent (see its own class
+    // doc) so builtin-model items - player heads, chests, anything routed through
+    // BuiltinModelItemRenderer - actually respect this alpha too, not just normal flat-icon items.
+    @Inject(method = "renderHotbarItem", at = @At("HEAD"))
+    private void onRenderHotbarItemHead(DrawContext context, int x, int y, RenderTickCounter tickCounter, PlayerEntity player, ItemStack stack, int seed, CallbackInfo ci) {
+        VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
+        if (element == null) return;
+
+        double itemAlpha = element.getItemAlpha();
+        RenderSystem.setShaderColor(1f, 1f, 1f, (float) itemAlpha);
+        // Unconditional set (not just "if <1 set true") - this runs once per hotbar slot per frame,
+        // so if a PREVIOUS slot's own item render threw partway through (a broken/modded custom
+        // item renderer) and skipped its own TAIL reset below, this slot's HEAD would otherwise
+        // inherit that stuck "true" even when ITS OWN alpha is 1.0 - self-heals every call instead
+        // of only on the lucky case where TAIL actually ran last time.
+        ItemRenderAlphaState.forcingTranslucent = itemAlpha < 1.0;
+    }
+
+    @Inject(method = "renderHotbarItem", at = @At("TAIL"))
+    private void onRenderHotbarItemTail(DrawContext context, int x, int y, RenderTickCounter tickCounter, PlayerEntity player, ItemStack stack, int seed, CallbackInfo ci) {
+        VanillaHotbarHud element = findVanillaElement(VanillaHotbarHud.class);
+        if (element == null) return;
+
+        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+        ItemRenderAlphaState.forcingTranslucent = false;
     }
 
     @Inject(method = "renderArmor", at = @At("HEAD"), cancellable = true)
     private static void onRenderArmorHead(DrawContext context, PlayerEntity player, int i, int j, int k, int x, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaArmorHud element = staticFindVanillaElement(VanillaArmorHud.class);
-        if (element != null && element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        if (element == null) return;
 
-        double defaultX = x;
-        double defaultY = i - (j - 1) * k - 10;
-        double scale = MinecraftClient.getInstance().getWindow().getFramebufferWidth() / (double) context.getScaledWindowWidth();
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        MatrixStack matrices = context.getMatrices();
-        matrices.push();
+        vlDeferred.add(() -> {
+            double defaultX = x;
+            double defaultY = i - (j - 1) * k - 10;
+            double scale = MinecraftClient.getInstance().getWindow().getFramebufferWidth() / (double) context.getScaledWindowWidth();
 
-        if (element != null && element.getRotation() != 0) {
-            double pivotX = (element.x + element.getWidth() / 2.0) / scale;
-            double pivotY = (element.y + element.getHeight() / 2.0) / scale;
+            MatrixStack matrices = context.getMatrices();
+            matrices.push();
 
-            matrices.translate(pivotX, pivotY, 0);
-            matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) element.getRotation()));
-            matrices.translate(-pivotX, -pivotY, 0);
-        }
+            try {
+                if (element.getRotation() != 0) {
+                    double pivotX = (element.x + element.getWidth() / 2.0) / scale;
+                    double pivotY = (element.y + element.getHeight() / 2.0) / scale;
 
-        matrices.translate(element != null ? element.x / scale : defaultX, element != null ? element.y / scale : defaultY, 0);
-        float contentScale = (float) (element != null ? element.getScale() / scale : 1);
-        matrices.scale(contentScale, contentScale, 1f);
-        matrices.translate(-defaultX, -defaultY, 0);
+                    matrices.translate(pivotX, pivotY, 0);
+                    matrices.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) element.getRotation()));
+                    matrices.translate(-pivotX, -pivotY, 0);
+                }
 
-        double rotation = element != null ? element.getRotation() : 0;
-        VanillaHudRotationState.statusBarSpriteCounterRotation = (element != null && rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
+                matrices.translate(element.x / scale, element.y / scale, 0);
+                float contentScale = (float) (element.getScale() / scale);
+                matrices.scale(contentScale, contentScale, 1f);
+                matrices.translate(-defaultX, -defaultY, 0);
 
-        double alpha = element != null ? element.alpha.get() / 255.0 : 1.0;
-        if (alpha < 1.0) RenderSystem.setShaderColor(1f, 1f, 1f, (float) alpha);
-    }
+                double rotation = element.getRotation();
+                VanillaHudRotationState.statusBarSpriteCounterRotation = (rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
 
-    @Inject(method = "renderArmor", at = @At("TAIL"))
-    private static void onRenderArmorTail(DrawContext context, PlayerEntity player, int i, int j, int k, int x, CallbackInfo ci) {
-        RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
-        context.getMatrices().pop();
-        VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
+                double alpha = element.alpha.get() / 255.0;
+                if (alpha < 1.0) RenderSystem.setShaderColor(1f, 1f, 1f, (float) alpha);
+                // Unconditional set - see ItemRenderAlphaState's own class doc for why this exists at
+                // all (builtin-model items ignore shader alpha unless routed through a translucent layer).
+                ItemRenderAlphaState.forcingTranslucent = alpha < 1.0;
+
+                renderArmor(context, player, i, j, k, x);
+            } finally {
+                RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+                ItemRenderAlphaState.forcingTranslucent = false;
+                matrices.pop();
+                VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
+            }
+        });
     }
 
     private static <T extends HudElement> T staticFindVanillaElement(Class<T> type) {
@@ -963,33 +1112,38 @@ public abstract class InGameHudMixin {
 
     @Inject(method = "renderHealthBar", at = @At("HEAD"), cancellable = true)
     private void onRenderHealthBarHead(DrawContext context, PlayerEntity player, int x, int y, int lines, int regeneratingHeartIndex, float maxHealth, int lastHealth, int health, int absorption, boolean blinking, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaHealthHud element = findVanillaElement(VanillaHealthHud.class);
-        if (element != null && element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        if (element == null) return;
 
-        double scale = guiScaleFactor(context);
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        pushVanillaTransform(context,
-            element != null ? element.x / scale : x, element != null ? element.y / scale : y,
-            element != null ? element.getScale() / scale : 1, x, y,
-            element != null ? element.getRotation() : 0, element != null ? pivotX(element, scale) : 0, element != null ? pivotY(element, scale) : 0,
-            element != null ? element.alpha.get() / 255.0 : 1.0
-        );
+        vlDeferred.add(() -> {
+            double scale = guiScaleFactor(context);
 
-        double rotation = element != null ? element.getRotation() : 0;
-        VanillaHudRotationState.statusBarSpriteCounterRotation = (element != null && rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
+            pushVanillaTransform(context,
+                element.x / scale, element.y / scale,
+                element.getScale() / scale, x, y,
+                element.getRotation(), pivotX(element, scale), pivotY(element, scale),
+                element.alpha.get() / 255.0
+            );
 
-        VanillaHudRotationState.spriteRowAnchorX = x;
-        VanillaHudRotationState.spriteSpacing = element != null ? element.getSpacing() : 8;
-    }
+            double rotation = element.getRotation();
+            VanillaHudRotationState.statusBarSpriteCounterRotation = (rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
 
-    @Inject(method = "renderHealthBar", at = @At("TAIL"))
-    private void onRenderHealthBarTail(DrawContext context, PlayerEntity player, int x, int y, int lines, int regeneratingHeartIndex, float maxHealth, int lastHealth, int health, int absorption, boolean blinking, CallbackInfo ci) {
-        popVanillaTransform(context);
-        VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
-        VanillaHudRotationState.spriteSpacing = 8;
+            VanillaHudRotationState.spriteRowAnchorX = x;
+            VanillaHudRotationState.spriteSpacing = element.getSpacing();
+
+            try {
+                renderHealthBar(context, player, x, y, lines, regeneratingHeartIndex, maxHealth, lastHealth, health, absorption, blinking);
+            } finally {
+                popVanillaTransform(context);
+                VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
+                VanillaHudRotationState.spriteSpacing = 8;
+            }
+        });
     }
 
     // Health's Spacing setting: drawHeart is always called with the same vanilla-computed x for
@@ -1008,36 +1162,40 @@ public abstract class InGameHudMixin {
 
     @Inject(method = "renderFood", at = @At("HEAD"), cancellable = true)
     private void onRenderFoodHead(DrawContext context, PlayerEntity player, int top, int right, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaHungerHud element = findVanillaElement(VanillaHungerHud.class);
-        if (element != null && element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        if (element == null) return;
 
-        double defaultX = right - 81;
-        double defaultY = top;
-        double scale = guiScaleFactor(context);
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        pushVanillaTransform(context,
-            element != null ? element.x / scale : defaultX, element != null ? element.y / scale : defaultY,
-            element != null ? element.getScale() / scale : 1, defaultX, defaultY,
-            element != null ? element.getRotation() : 0, element != null ? pivotX(element, scale) : 0, element != null ? pivotY(element, scale) : 0,
-            element != null ? element.alpha.get() / 255.0 : 1.0
-        );
+        vlDeferred.add(() -> {
+            double defaultX = right - 81;
+            double defaultY = top;
+            double scale = guiScaleFactor(context);
 
-        double rotation = element != null ? element.getRotation() : 0;
-        VanillaHudRotationState.statusBarSpriteCounterRotation = (element != null && rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
+            pushVanillaTransform(context,
+                element.x / scale, element.y / scale,
+                element.getScale() / scale, defaultX, defaultY,
+                element.getRotation(), pivotX(element, scale), pivotY(element, scale),
+                element.alpha.get() / 255.0
+            );
 
-        VanillaHungerHud hungerElement = findVanillaElement(VanillaHungerHud.class);
-        VanillaHudRotationState.spriteRowAnchorX = right - 9;
-        VanillaHudRotationState.spriteSpacing = hungerElement != null ? hungerElement.getSpacing() : 8;
-    }
+            double rotation = element.getRotation();
+            VanillaHudRotationState.statusBarSpriteCounterRotation = (rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
 
-    @Inject(method = "renderFood", at = @At("TAIL"))
-    private void onRenderFoodTail(DrawContext context, PlayerEntity player, int top, int right, CallbackInfo ci) {
-        popVanillaTransform(context);
-        VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
-        VanillaHudRotationState.spriteSpacing = 8;
+            VanillaHudRotationState.spriteRowAnchorX = right - 9;
+            VanillaHudRotationState.spriteSpacing = element.getSpacing();
+
+            try {
+                renderFood(context, player, top, right);
+            } finally {
+                popVanillaTransform(context);
+                VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
+                VanillaHudRotationState.spriteSpacing = 8;
+            }
+        });
     }
 
     // Hunger's Spacing setting: same technique as Health's onHealthHeartX above - drawGuiTexture is
@@ -1054,61 +1212,36 @@ public abstract class InGameHudMixin {
 
     @Inject(method = "renderMountHealth", at = @At("HEAD"), cancellable = true)
     private void onRenderMountHealthHead(DrawContext context, CallbackInfo ci) {
+        if (vlReplaying || ci.isCancelled()) return;
+
         VanillaMountHealthHud element = findVanillaElement(VanillaMountHealthHud.class);
-        if (element != null && element.isHidden()) {
-            ci.cancel();
-            return;
-        }
+        if (element == null) return;
 
-        double defaultX = context.getScaledWindowWidth() / 2.0 + 91 - 81;
-        double defaultY = context.getScaledWindowHeight() - 39;
-        double scale = guiScaleFactor(context);
+        ci.cancel();
+        if (element.isHidden()) return;
 
-        pushVanillaTransform(context,
-            element != null ? element.x / scale : defaultX, element != null ? element.y / scale : defaultY,
-            element != null ? element.getScale() / scale : 1, defaultX, defaultY,
-            element != null ? element.getRotation() : 0, element != null ? pivotX(element, scale) : 0, element != null ? pivotY(element, scale) : 0,
-            element != null ? element.alpha.get() / 255.0 : 1.0
-        );
+        vlDeferred.add(() -> {
+            double defaultX = context.getScaledWindowWidth() / 2.0 + 91 - 81;
+            double defaultY = context.getScaledWindowHeight() - 39;
+            double scale = guiScaleFactor(context);
 
-        double rotation = element != null ? element.getRotation() : 0;
-        VanillaHudRotationState.statusBarSpriteCounterRotation = (element != null && rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
-    }
+            pushVanillaTransform(context,
+                element.x / scale, element.y / scale,
+                element.getScale() / scale, defaultX, defaultY,
+                element.getRotation(), pivotX(element, scale), pivotY(element, scale),
+                element.alpha.get() / 255.0
+            );
 
-    @Inject(method = "renderMountHealth", at = @At("TAIL"))
-    private void onRenderMountHealthTail(DrawContext context, CallbackInfo ci) {
-        popVanillaTransform(context);
-        VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
-    }
+            double rotation = element.getRotation();
+            VanillaHudRotationState.statusBarSpriteCounterRotation = (rotation != 0 && element.keepSpritesUpright()) ? -rotation : 0;
 
-    // GuiScaleAdjust's Tab List Scale: the tab list isn't a Screen (shown by holding a key,
-    // independent of screen state), so it's never covered by that module's window-scale-factor
-    // mechanism - scaled directly here instead, around the screen's own center, matching how the
-    // tab list's own internal layout already centers itself.
-    private boolean tabListScalePushed = false;
-
-    @Inject(method = "renderPlayerList", at = @At("HEAD"))
-    private void onRenderPlayerListHead(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        double scale = Modules.get().get(GuiScaleAdjust.class).getTabListScale();
-        if (scale == 1.0) return;
-
-        double centerX = context.getScaledWindowWidth() / 2.0;
-        double centerY = context.getScaledWindowHeight() / 2.0;
-
-        MatrixStack matrices = context.getMatrices();
-        matrices.push();
-        matrices.translate(centerX, centerY, 0);
-        matrices.scale((float) scale, (float) scale, 1f);
-        matrices.translate(-centerX, -centerY, 0);
-        tabListScalePushed = true;
-    }
-
-    @Inject(method = "renderPlayerList", at = @At("TAIL"))
-    private void onRenderPlayerListTail(DrawContext context, RenderTickCounter tickCounter, CallbackInfo ci) {
-        if (tabListScalePushed) {
-            context.getMatrices().pop();
-            tabListScalePushed = false;
-        }
+            try {
+                renderMountHealth(context);
+            } finally {
+                popVanillaTransform(context);
+                VanillaHudRotationState.statusBarSpriteCounterRotation = 0;
+            }
+        });
     }
 
     // Air bubbles: vanilla draws these inline inside renderStatusBars with no separate callable

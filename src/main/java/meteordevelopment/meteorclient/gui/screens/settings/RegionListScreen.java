@@ -41,9 +41,9 @@ public class RegionListScreen extends WindowScreen {
     private void initTable() {
         table.clear();
 
-        table.add(theme.label("Manually placed area overrides, higher priority than per-biome colors."));
+        table.add(theme.label("Manually placed area overrides, higher priority than per-biome colors.", 400));
         table.row();
-        table.add(theme.label("Stand where you want the region to start (ideally the center of the area), then press Add."));
+        table.add(theme.label("Stand where you want the region to start (ideally the center of the area), then press Add.", 400));
         table.row();
         table.add(theme.horizontalSeparator()).expandX();
         table.row();
@@ -51,7 +51,10 @@ public class RegionListScreen extends WindowScreen {
         for (AmbienceRegion region : List.copyOf(setting.get())) {
             String summary;
             if (region.pointMode) {
-                summary = "Point (" + region.px + ", " + region.py + ", " + region.pz + ") r=" + region.radiusX + "/" + region.radiusY + "/" + region.radiusZ
+                boolean cylinderCoords = region.pointShape == AmbienceRegion.PointShape.Cylinder && region.cylinderHeightMode == AmbienceRegion.CylinderHeightMode.Coords;
+                String heightPart = cylinderCoords ? "/Y" + region.cylinderMinY + ".." + region.cylinderMaxY : "/" + region.radiusY;
+
+                summary = region.pointShape + " (" + region.px + ", " + region.py + ", " + region.pz + ") r=" + region.radiusX + heightPart + "/" + region.radiusZ
                     + (region.biome.isEmpty() ? "" : " in " + region.biome);
             } else if (region.yOnly) {
                 summary = "Y " + Math.min(region.y1, region.y2) + " to " + Math.max(region.y1, region.y2);
@@ -64,9 +67,20 @@ public class RegionListScreen extends WindowScreen {
 
             WHorizontalList list = table.add(theme.horizontalList()).expandCellX().widget();
 
+            list.add(theme.label("On")).right();
             var enabled = list.add(theme.checkbox(region.enabled)).right().widget();
             enabled.action = () -> {
                 region.enabled = enabled.checked;
+                setting.onChanged();
+            };
+
+            // Separate from the region's own on/off switch above - lets Ambience's Visualize
+            // Regions option show only a chosen subset (e.g. just the one you're placing right
+            // now) instead of always showing every enabled region at once.
+            list.add(theme.label("Show")).right();
+            var visualize = list.add(theme.checkbox(region.visualize)).right().widget();
+            visualize.action = () -> {
+                region.visualize = visualize.checked;
                 setting.onChanged();
             };
 

@@ -54,10 +54,14 @@ public class Renderer2D {
 
     // Tris
     public void triangle(double x1, double y1, double x2, double y2, double x3, double y3, Color color) {
+        triangle(x1, y1, color, x2, y2, color, x3, y3, color);
+    }
+
+    public void triangle(double x1, double y1, Color c1, double x2, double y2, Color c2, double x3, double y3, Color c3) {
         triangles.triangle(
-            triangles.vec2(x1, y1).color(color).next(),
-            triangles.vec2(x2, y2).color(color).next(),
-            triangles.vec2(x3, y3).color(color).next()
+            triangles.vec2(x1, y1).color(c1).next(),
+            triangles.vec2(x2, y2).color(c2).next(),
+            triangles.vec2(x3, y3).color(c3).next()
         );
     }
 

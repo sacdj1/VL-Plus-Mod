@@ -14,6 +14,7 @@ import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
 import meteordevelopment.meteorclient.gui.widgets.input.WIntEdit;
 import meteordevelopment.meteorclient.settings.WeightedColorEntry;
 import meteordevelopment.meteorclient.settings.WeightedColorEntry.BlendMode;
+import meteordevelopment.meteorclient.settings.WeightedColorEntry.Mode;
 import meteordevelopment.meteorclient.utils.misc.NbtUtils;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import net.minecraft.nbt.NbtCompound;
@@ -54,11 +55,25 @@ public class WeightedColorListScreen extends WindowScreen {
         };
     }
 
+    private static String modeLabel(Mode mode) {
+        return switch (mode) {
+            case Replace -> "Replace";
+            case Colorize -> "Colorize";
+        };
+    }
+
+    private static Mode nextMode(Mode mode) {
+        return switch (mode) {
+            case Replace -> Mode.Colorize;
+            case Colorize -> Mode.Replace;
+        };
+    }
+
     private void initTable() {
         table.clear();
 
         if (colors.size() > 1) {
-            table.add(theme.label("Multiple colors are picked at random per block, weighted by the numbers below."));
+            table.add(theme.label("Multiple colors are picked at random per block, weighted by the numbers below.", 400));
             table.row();
         }
 
@@ -103,6 +118,13 @@ public class WeightedColorListScreen extends WindowScreen {
                 initTable();
             };
 
+            actions.add(theme.button(modeLabel(entry.mode))).right().widget().action = () -> {
+                entry.mode = nextMode(entry.mode);
+
+                table.clear();
+                initTable();
+            };
+
             actions.add(theme.button(GuiRenderer.COPY)).right().widget().action = () ->
                 NbtUtils.toClipboard("Color", entry.toTag());
 
@@ -114,13 +136,14 @@ public class WeightedColorListScreen extends WindowScreen {
                 entry.color = pasted.color;
                 entry.weight = pasted.weight;
                 entry.blend = pasted.blend;
+                entry.mode = pasted.mode;
 
                 table.clear();
                 initTable();
             };
 
             actions.add(theme.button("Duplicate")).right().widget().action = () -> {
-                WeightedColorEntry duplicate = new WeightedColorEntry(new SettingColor(color.r, color.g, color.b, color.a), entry.weight, entry.blend);
+                WeightedColorEntry duplicate = new WeightedColorEntry(new SettingColor(color.r, color.g, color.b, color.a), entry.weight, entry.blend, entry.mode);
                 colors.add(colors.indexOf(entry) + 1, duplicate);
 
                 table.clear();

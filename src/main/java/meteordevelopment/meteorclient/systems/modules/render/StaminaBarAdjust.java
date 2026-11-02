@@ -6,9 +6,11 @@
 package meteordevelopment.meteorclient.systems.modules.render;
 
 import meteordevelopment.meteorclient.events.world.TickEvent;
+import meteordevelopment.meteorclient.gui.screens.settings.ColorRangeListScreen;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
+import meteordevelopment.meteorclient.utils.misc.StatusColorOverrides;
 import meteordevelopment.meteorclient.utils.render.color.Color;
 import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
@@ -32,7 +34,9 @@ public class StaminaBarAdjust extends Module {
         Gradient,
         Flashing,
         HueShift,
-        ByValue
+        ByValue,
+        ByValueRainbow,
+        ByValueRanges
     }
 
     public enum RainbowTransition {
@@ -44,6 +48,11 @@ public class StaminaBarAdjust extends Module {
         Off,
         Permanent,
         FlashWhenReached
+    }
+
+    public enum ThresholdMode {
+        Percent,
+        Value
     }
 
     private final SettingGroup sgGeneral = settings.getDefaultGroup();
@@ -66,6 +75,7 @@ public class StaminaBarAdjust extends Module {
     private final SettingGroup sgFillGradient = settings.createGroup("Fill Color (Gradient / Flashing)");
     private final SettingGroup sgFillHueShift = settings.createGroup("Fill Color (Hue Shift)");
     private final SettingGroup sgFillByValue = settings.createGroup("Fill Color (By Value)");
+    private final StatusColorOverrides statusColors = new StatusColorOverrides(settings.createGroup("Status Effect Colors"));
 
     // Background Color
 
@@ -111,13 +121,31 @@ public class StaminaBarAdjust extends Module {
         .build()
     );
 
+    private final Setting<ThresholdMode> maxThresholdMode = sgSpecialColors.add(new EnumSetting.Builder<ThresholdMode>()
+        .name("max-hunger-threshold-mode")
+        .description("Whether the threshold below is a percent of max hunger (20), or a specific absolute hunger value.")
+        .defaultValue(ThresholdMode.Percent)
+        .visible(maxHealthColorEnabled::get)
+        .build()
+    );
+
     private final Setting<Integer> maxHealthThreshold = sgSpecialColors.add(new IntSetting.Builder()
         .name("max-hunger-threshold")
         .description("Hunger percent at/above which the max-hunger color applies. 100 = only exactly full, same as before this was adjustable - lower it to trigger a bit before completely full.")
         .defaultValue(100)
         .range(1, 100)
         .sliderRange(1, 100)
-        .visible(maxHealthColorEnabled::get)
+        .visible(() -> maxHealthColorEnabled.get() && maxThresholdMode.get() == ThresholdMode.Percent)
+        .build()
+    );
+
+    private final Setting<Integer> maxThresholdValue = sgSpecialColors.add(new IntSetting.Builder()
+        .name("max-hunger-threshold-value")
+        .description("Hunger value (0-20) at/above which the max-hunger color applies, when the mode above is Value instead of Percent.")
+        .defaultValue(20)
+        .range(0, 20)
+        .sliderRange(0, 20)
+        .visible(() -> maxHealthColorEnabled.get() && maxThresholdMode.get() == ThresholdMode.Value)
         .build()
     );
 
@@ -136,13 +164,31 @@ public class StaminaBarAdjust extends Module {
         .build()
     );
 
+    private final Setting<ThresholdMode> lowThresholdMode = sgSpecialColors.add(new EnumSetting.Builder<ThresholdMode>()
+        .name("low-hunger-threshold-mode")
+        .description("Whether the threshold below is a percent of max hunger (20), or a specific absolute hunger value.")
+        .defaultValue(ThresholdMode.Percent)
+        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached)
+        .build()
+    );
+
     private final Setting<Integer> lowHealthThreshold = sgSpecialColors.add(new IntSetting.Builder()
         .name("low-hunger-threshold")
         .description("Hunger percent at/below which the low-hunger color flashes (vanilla's own hunger shake kicks in at 3 legs of meat = 6/20 = 30% - this defaults to match that exactly). Only used by Flash When Reached - Permanent has no threshold, it's just always on.")
         .defaultValue(30)
         .range(0, 100)
         .sliderRange(0, 100)
-        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached)
+        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowThresholdMode.get() == ThresholdMode.Percent)
+        .build()
+    );
+
+    private final Setting<Integer> lowThresholdValue = sgSpecialColors.add(new IntSetting.Builder()
+        .name("low-hunger-threshold-value")
+        .description("Hunger value (0-20) at/below which the low-hunger color flashes, when the mode above is Value instead of Percent (vanilla's own hunger shake kicks in at 3 legs of meat = 6, if you want an equivalent feel here).")
+        .defaultValue(6)
+        .range(0, 20)
+        .sliderRange(0, 20)
+        .visible(() -> lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowThresholdMode.get() == ThresholdMode.Value)
         .build()
     );
 
@@ -258,17 +304,41 @@ public class StaminaBarAdjust extends Module {
 
     private final Setting<SettingColor> backgroundHighColor = sgBackgroundByValue.add(new ColorSetting.Builder()
         .name("background-high-value-color")
-        .description("Color at full hunger - blends toward Low Value Color below as hunger drops.")
+        .description("Color at full hunger - blends toward Mid Value Color below as hunger drops.")
         .defaultValue(new SettingColor(140, 100, 20))
+        .visible(() -> backgroundMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<SettingColor> backgroundMidColor = sgBackgroundByValue.add(new ColorSetting.Builder()
+        .name("background-mid-value-color")
+        .description("Color at half hunger - blends between Background High Value Color above and Background Low Value Color below.")
+        .defaultValue(new SettingColor(120, 62, 22))
         .visible(() -> backgroundMode.get() == ColorMode.ByValue)
         .build()
     );
 
     private final Setting<SettingColor> backgroundLowColor = sgBackgroundByValue.add(new ColorSetting.Builder()
         .name("background-low-value-color")
-        .description("Color at zero hunger - Background High Value Color above blends toward this as hunger drops.")
+        .description("Color at zero hunger - Background Mid Value Color above blends toward this as hunger drops.")
         .defaultValue(new SettingColor(100, 25, 25))
         .visible(() -> backgroundMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<List<ColorRangeEntry>> backgroundRanges = sgBackgroundByValue.add(new ColorRangeListSetting.Builder()
+        .name("background-value-ranges")
+        .description("Each band's own hunger-point cutoff and color - see Edit Ranges below.")
+        .visible(() -> backgroundMode.get() == ColorMode.ByValueRanges)
+        .build()
+    );
+
+    private final Setting<Void> backgroundRangesEdit = sgBackgroundByValue.add(new ButtonSetting.Builder()
+        .name("background-value-ranges-edit")
+        .description("Add/edit/remove the hunger-point bands above.")
+        .buttonText("Edit Ranges")
+        .screen(theme -> new ColorRangeListScreen(theme, "Background", backgroundRanges.get(), 20))
+        .visible(() -> backgroundMode.get() == ColorMode.ByValueRanges)
         .build()
     );
 
@@ -364,17 +434,41 @@ public class StaminaBarAdjust extends Module {
 
     private final Setting<SettingColor> fillHighColor = sgFillByValue.add(new ColorSetting.Builder()
         .name("fill-high-value-color")
-        .description("Color at full hunger - blends toward Low Value Color below as hunger drops.")
+        .description("Color at full hunger - blends toward Mid Value Color below as hunger drops.")
         .defaultValue(new SettingColor(255, 200, 40))
+        .visible(() -> fillMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<SettingColor> fillMidColor = sgFillByValue.add(new ColorSetting.Builder()
+        .name("fill-mid-value-color")
+        .description("Color at half hunger - blends between Fill High Value Color above and Fill Low Value Color below.")
+        .defaultValue(new SettingColor(237, 115, 35))
         .visible(() -> fillMode.get() == ColorMode.ByValue)
         .build()
     );
 
     private final Setting<SettingColor> fillLowColor = sgFillByValue.add(new ColorSetting.Builder()
         .name("fill-low-value-color")
-        .description("Color at zero hunger - Fill High Value Color above blends toward this as hunger drops.")
+        .description("Color at zero hunger - Fill Mid Value Color above blends toward this as hunger drops.")
         .defaultValue(new SettingColor(220, 30, 30))
         .visible(() -> fillMode.get() == ColorMode.ByValue)
+        .build()
+    );
+
+    private final Setting<List<ColorRangeEntry>> fillRanges = sgFillByValue.add(new ColorRangeListSetting.Builder()
+        .name("fill-value-ranges")
+        .description("Each band's own hunger-point cutoff and color - see Edit Ranges below.")
+        .visible(() -> fillMode.get() == ColorMode.ByValueRanges)
+        .build()
+    );
+
+    private final Setting<Void> fillRangesEdit = sgFillByValue.add(new ButtonSetting.Builder()
+        .name("fill-value-ranges-edit")
+        .description("Add/edit/remove the hunger-point bands above.")
+        .buttonText("Edit Ranges")
+        .screen(theme -> new ColorRangeListScreen(theme, "Fill", fillRanges.get(), 20))
+        .visible(() -> fillMode.get() == ColorMode.ByValueRanges)
         .build()
     );
 
@@ -382,7 +476,7 @@ public class StaminaBarAdjust extends Module {
     private int lowFlashTicksRemaining = 0;
 
     public StaminaBarAdjust() {
-        super(Categories.Render, "stamina-bar-adjust", "Colors the real hunger icons and/or Stamina Bar HUD - Fixed, or an animated mode independent of hunger, plus distinct Max/Low hunger colors.");
+        super(Categories.Hud, "stamina-bar-adjust", "Colors the real hunger icons and/or Stamina Bar HUD - Fixed, or an animated mode independent of hunger, plus distinct Max/Low hunger colors.");
     }
 
     @Override
@@ -396,7 +490,7 @@ public class StaminaBarAdjust extends Module {
         if (mc.player == null || lowHealthMode.get() != LowHealthMode.FlashWhenReached) return;
 
         float progress = mc.player.getHungerManager().getFoodLevel() / 20f;
-        boolean above = progress > lowHealthThreshold.get() / 100.0;
+        boolean above = progress > lowThresholdFraction();
 
         if (!above && wasAboveLowThreshold) lowFlashTicksRemaining = lowHealthFlashDuration.get();
         wasAboveLowThreshold = above;
@@ -408,6 +502,15 @@ public class StaminaBarAdjust extends Module {
         return alpha.get() / 255.0;
     }
 
+    /** Low/Max Hunger Color's threshold, as a 0-1 fraction of max hunger (20, vanilla hunger has no attribute-based max like health does) - either a direct percent, or an absolute hunger value. */
+    private double lowThresholdFraction() {
+        return lowThresholdMode.get() == ThresholdMode.Percent ? lowHealthThreshold.get() / 100.0 : lowThresholdValue.get() / 20.0;
+    }
+
+    private double maxThresholdFraction() {
+        return maxThresholdMode.get() == ThresholdMode.Percent ? maxHealthThreshold.get() / 100.0 : maxThresholdValue.get() / 20.0;
+    }
+
     /** progress: current/max hunger, 0-1 - used by By Value mode below (a smooth blend, unlike the hard-cutoff Max/Low Hunger Color, which only applies to Fill). */
     public Color getBackgroundColor(Color fallback, float progress) {
         return switch (backgroundMode.get()) {
@@ -416,13 +519,18 @@ public class StaminaBarAdjust extends Module {
             case Gradient -> gradientColor(backgroundGradientColors.get(), backgroundGradientSpeed.get());
             case Flashing -> flashColor(backgroundFlashColors.get(), fallback);
             case HueShift -> hueShiftColor(backgroundHueShiftBaseColor.get(), backgroundHueShiftSpeed.get(), backgroundHueShiftRange.get());
-            case ByValue -> byValueColor(backgroundHighColor.get(), backgroundLowColor.get(), progress);
+            case ByValue -> byValueColor(backgroundHighColor.get(), backgroundMidColor.get(), backgroundLowColor.get(), progress);
+            case ByValueRainbow -> byValueRainbowColor(progress);
+            case ByValueRanges -> rangesColor(backgroundRanges.get());
         };
     }
 
     /** progress: current/max hunger, 0-1 - used for the Max/Low hunger color overrides below (hard cutoffs), which take priority over Fill Mode, and for By Value mode (a smooth blend across the whole range instead). */
     public Color getFillColor(Color fallback, float progress) {
-        if (maxHealthColorEnabled.get() && progress >= maxHealthThreshold.get() / 100.0) return maxHealthColor.get();
+        Color statusColor = statusColors.get();
+        if (statusColor != null) return statusColor;
+
+        if (maxHealthColorEnabled.get() && progress >= maxThresholdFraction()) return maxHealthColor.get();
 
         if (lowHealthMode.get() == LowHealthMode.Permanent) return lowHealthColor.get();
         if (lowHealthMode.get() == LowHealthMode.FlashWhenReached && lowFlashTicksRemaining > 0) return lowHealthColor.get();
@@ -433,19 +541,31 @@ public class StaminaBarAdjust extends Module {
             case Gradient -> gradientColor(fillGradientColors.get(), fillGradientSpeed.get());
             case Flashing -> flashColor(fillFlashColors.get(), fallback);
             case HueShift -> hueShiftColor(fillHueShiftBaseColor.get(), fillHueShiftSpeed.get(), fillHueShiftRange.get());
-            case ByValue -> byValueColor(fillHighColor.get(), fillLowColor.get(), progress);
+            case ByValue -> byValueColor(fillHighColor.get(), fillMidColor.get(), fillLowColor.get(), progress);
+            case ByValueRainbow -> byValueRainbowColor(progress);
+            case ByValueRanges -> rangesColor(fillRanges.get());
         };
     }
 
-    /** Linear blend from lowColor (progress 0) to highColor (progress 1) - "one color at high hunger, another at low hunger". */
-    private Color byValueColor(SettingColor highColor, SettingColor lowColor, float progress) {
+    /** By Value Ranges - a hard, un-blended color per user-defined band of real hunger points. */
+    private Color rangesColor(List<ColorRangeEntry> ranges) {
+        double food = mc.player != null ? mc.player.getHungerManager().getFoodLevel() : 0;
+        return ColorRangeEntry.resolve(ranges, food, Color.WHITE);
+    }
+
+    /** Piecewise-linear blend through three colors - lowColor at progress 0, midColor at 0.5, highColor at 1. */
+    private Color byValueColor(SettingColor highColor, SettingColor midColor, SettingColor lowColor, float progress) {
         float t = MathHelper.clamp(progress, 0f, 1f);
+        boolean upper = t >= 0.5f;
+        SettingColor from = upper ? midColor : lowColor;
+        SettingColor to = upper ? highColor : midColor;
+        float k = upper ? (t - 0.5f) * 2f : t * 2f;
 
         return new Color(
-            (int) (lowColor.r + (highColor.r - lowColor.r) * t),
-            (int) (lowColor.g + (highColor.g - lowColor.g) * t),
-            (int) (lowColor.b + (highColor.b - lowColor.b) * t),
-            (int) (lowColor.a + (highColor.a - lowColor.a) * t)
+            (int) (from.r + (to.r - from.r) * k),
+            (int) (from.g + (to.g - from.g) * k),
+            (int) (from.b + (to.b - from.b) * k),
+            (int) (from.a + (to.a - from.a) * k)
         );
     }
 
@@ -515,5 +635,10 @@ public class StaminaBarAdjust extends Module {
         Color color = Color.fromHsv(hue, hsb[1], hsb[2]);
         color.a = base.a;
         return color;
+    }
+
+    /** "By Value Rainbow": the whole rainbow mapped onto the value - red at 0 sweeping through to violet at full. */
+    private Color byValueRainbowColor(float progress) {
+        return Color.fromHsv(MathHelper.clamp(progress, 0f, 1f) * 300.0, 1, 1);
     }
 }

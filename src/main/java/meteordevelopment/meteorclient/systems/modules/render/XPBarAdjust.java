@@ -504,7 +504,7 @@ public class XPBarAdjust extends Module {
     private int readyTicks = 0;
 
     public XPBarAdjust() {
-        super(Categories.Render, "xp-bar-adjust", "Recolors the vanilla XP bar - useful on servers that repurpose it for an ability cooldown.");
+        super(Categories.Hud, "xp-bar-adjust", "Recolors the vanilla XP bar - useful on servers that repurpose it for an ability cooldown.");
     }
 
     @Override

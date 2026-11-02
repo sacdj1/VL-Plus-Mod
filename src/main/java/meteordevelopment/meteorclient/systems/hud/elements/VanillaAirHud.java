@@ -58,8 +58,8 @@ public class VanillaAirHud extends HudElement {
         .name("rotation")
         .description("Rotates the bubble row's layout around its own center, in degrees clockwise. Unlike the other Vanilla elements (which redirect vanilla's own matrix-transformed draw calls), this element draws itself - so only each bubble's position rotates around the center, not the individual bubble icons themselves.")
         .defaultValue(0)
-        .range(0, 359)
-        .sliderRange(0, 359)
+        .range(-359, 359)
+        .sliderRange(-359, 359)
         .build()
     );
 
@@ -78,23 +78,31 @@ public class VanillaAirHud extends HudElement {
 
     @Override
     public void render(HudRenderer renderer) {
-        if (mc.player == null) {
-            if (isInEditor()) renderer.quad(x, y, getWidth(), getHeight(), new Color(255, 255, 255, 40));
+        // Real air is only ever visible underwater or while actually low - which means it's
+        // normally invisible in the editor too, with nothing to see or grab while positioning it.
+        // Draw a fixed example row instead (a mix of full/bursting bubbles, so both icon types are
+        // visible at once) whenever the editor is open, regardless of the player's real air state.
+        if (isInEditor()) {
+            drawBubbles(renderer, 7, 10);
             return;
         }
+
+        if (mc.player == null) return;
 
         int maxAir = mc.player.getMaxAir();
         int air = Math.min(mc.player.getAir(), maxAir);
         boolean visible = mc.player.isSubmergedIn(FluidTags.WATER) || air < maxAir;
 
-        if (!visible) {
-            if (isInEditor()) renderer.quad(x, y, getWidth(), getHeight(), new Color(255, 255, 255, 40));
-            return;
-        }
+        if (!visible) return;
 
-        double s = scale.get();
         int full = MathHelper.ceil((air - 2) * 10.0 / maxAir);
         int total = MathHelper.ceil(air * 10.0 / maxAir);
+
+        drawBubbles(renderer, full, total);
+    }
+
+    private void drawBubbles(HudRenderer renderer, int full, int total) {
+        double s = scale.get();
 
         double angleRad = Math.toRadians(rotation.get());
         double cos = Math.cos(angleRad), sin = Math.sin(angleRad);

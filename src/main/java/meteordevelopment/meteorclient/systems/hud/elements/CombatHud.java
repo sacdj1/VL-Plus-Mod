@@ -46,6 +46,11 @@ import static meteordevelopment.meteorclient.MeteorClient.mc;
 
 // TODO: Rewrite this to use the hud renderer system
 public class CombatHud extends HudElement {
+
+    @Override
+    public boolean hasOwnBackground() {
+        return true;
+    }
     private static final Color GREEN = new Color(15, 255, 15);
     private static final Color RED = new Color(255, 15, 15);
     private static final Color BLACK = new Color(0, 0, 0, 255);

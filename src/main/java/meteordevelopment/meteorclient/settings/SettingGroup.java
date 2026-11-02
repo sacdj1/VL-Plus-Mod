@@ -19,6 +19,12 @@ public class SettingGroup implements ISerializable<SettingGroup>, Iterable<Setti
     public final String name;
     public boolean sectionExpanded;
 
+    /** Hidden from the settings screen while this returns false (used to lock whole sections behind unlocks). */
+    public IVisible visible = () -> true;
+
+    /** Non-null makes this a sub-group, nested inside its parent's own section instead of getting its own top-level one - see Settings.createGroup(name, parent). */
+    public SettingGroup parent;
+
     final List<Setting<?>> settings = new ArrayList<>(1);
 
     SettingGroup(String name, boolean sectionExpanded) {

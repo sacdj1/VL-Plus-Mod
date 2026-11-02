@@ -103,8 +103,22 @@ public class Mesh {
         GL.deleteVertexArray(vao);
     }
 
+    /** Forcibly clears a stuck "building" state - for recovering a batch that started but never reached end() (an exception mid-render), instead of leaving begin() throwing forever. */
+    public void forceReset() {
+        building = false;
+    }
+
     public void begin() {
-        if (building) throw new IllegalStateException("Mesh.begin() called while already building.");
+        // A previous pass never reached end() (an exception somewhere between its own begin()/end()
+        // pair - a GUI widget's render() throwing is the real-world case: WWindow/WSection/WView's
+        // scissorStart()/.../scissorEnd() had no try/finally, so one exception from literally any
+        // child widget skipped scissorEnd() -> endRender() -> this mesh's own end(), leaving
+        // "building" stuck true forever. Throwing here used to make every later begin() on this same
+        // mesh (shared across every window/section in the whole GUI) throw too, permanently - the
+        // entire GUI's rendering stayed broken for the rest of the session until restart. Reset and
+        // continue instead, same fix as VanillaTextRenderer/CustomTextRenderer's begin() already use
+        // for the identical failure mode.
+        forceReset();
 
         verticesPointer = verticesPointerStart;
         vertexI = 0;
