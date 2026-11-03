@@ -1,6 +1,0 @@
-{
-    "parent": "item/generated",
-    "textures": {
-        "layer0": "item/vlplus_bow_t6_idle"
-    }
-}
