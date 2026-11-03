@@ -1,0 +1,45 @@
+{
+    "parent": "item/vlplus_bow3d_base",
+    "textures": {
+        "wood": "item/vlplus_bow3d_base_idle_wood",
+        "string": "item/vlplus_bow3d_string"
+    },
+    "overrides": [
+        { "predicate": { "custom_model_data": 500001 }, "model": "item/vlplus_bow3d_base_idle" },
+        { "predicate": { "custom_model_data": 500002 }, "model": "item/vlplus_bow3d_base_activate" },
+        { "predicate": { "custom_model_data": 500003 }, "model": "item/vlplus_bow3d_base_active" },
+        { "predicate": { "custom_model_data": 500004 }, "model": "item/vlplus_bow3d_base_deactivate" },
+
+        { "predicate": { "custom_model_data": 500041 }, "model": "item/vlplus_bow3d_t4_idle" },
+        { "predicate": { "custom_model_data": 500042 }, "model": "item/vlplus_bow3d_t4_activate" },
+        { "predicate": { "custom_model_data": 500043 }, "model": "item/vlplus_bow3d_t4_active" },
+        { "predicate": { "custom_model_data": 500044 }, "model": "item/vlplus_bow3d_t4_deactivate" },
+        { "predicate": { "custom_model_data": 500045 }, "model": "item/vlplus_bow3d_t4u_idle" },
+        { "predicate": { "custom_model_data": 500046 }, "model": "item/vlplus_bow3d_t4u_activate" },
+        { "predicate": { "custom_model_data": 500047 }, "model": "item/vlplus_bow3d_t4u_active" },
+        { "predicate": { "custom_model_data": 500048 }, "model": "item/vlplus_bow3d_t4u_deactivate" },
+
+        { "predicate": { "custom_model_data": 500051 }, "model": "item/vlplus_bow3d_t5_idle" },
+        { "predicate": { "custom_model_data": 500052 }, "model": "item/vlplus_bow3d_t5_activate" },
+        { "predicate": { "custom_model_data": 500053 }, "model": "item/vlplus_bow3d_t5_active" },
+        { "predicate": { "custom_model_data": 500054 }, "model": "item/vlplus_bow3d_t5_deactivate" },
+        { "predicate": { "custom_model_data": 500055 }, "model": "item/vlplus_bow3d_t5u_idle" },
+        { "predicate": { "custom_model_data": 500056 }, "model": "item/vlplus_bow3d_t5u_activate" },
+        { "predicate": { "custom_model_data": 500057 }, "model": "item/vlplus_bow3d_t5u_active" },
+        { "predicate": { "custom_model_data": 500058 }, "model": "item/vlplus_bow3d_t5u_deactivate" },
+
+        { "predicate": { "custom_model_data": 500061 }, "model": "item/vlplus_bow3d_t6_idle" },
+        { "predicate": { "custom_model_data": 500062 }, "model": "item/vlplus_bow3d_t6_activate" },
+        { "predicate": { "custom_model_data": 500063 }, "model": "item/vlplus_bow3d_t6_active" },
+        { "predicate": { "custom_model_data": 500064 }, "model": "item/vlplus_bow3d_t6_deactivate" },
+        { "predicate": { "custom_model_data": 500065 }, "model": "item/vlplus_bow3d_t6u_idle" },
+        { "predicate": { "custom_model_data": 500066 }, "model": "item/vlplus_bow3d_t6u_activate" },
+        { "predicate": { "custom_model_data": 500067 }, "model": "item/vlplus_bow3d_t6u_active" },
+        { "predicate": { "custom_model_data": 500068 }, "model": "item/vlplus_bow3d_t6u_deactivate" },
+
+        { "predicate": { "custom_model_data": 500071 }, "model": "item/vlplus_bow3d_t7_idle" },
+        { "predicate": { "custom_model_data": 500072 }, "model": "item/vlplus_bow3d_t7_activate" },
+        { "predicate": { "custom_model_data": 500073 }, "model": "item/vlplus_bow3d_t7_active" },
+        { "predicate": { "custom_model_data": 500074 }, "model": "item/vlplus_bow3d_t7_deactivate" }
+    ]
+}

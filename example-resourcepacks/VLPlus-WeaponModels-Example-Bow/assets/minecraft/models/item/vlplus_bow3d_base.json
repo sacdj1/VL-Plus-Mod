@@ -1,0 +1,88 @@
+{
+    "textures": {
+        "particle": "#wood"
+    },
+    "display": {
+        "thirdperson_righthand": {
+            "rotation": [ -80, 260, -40 ],
+            "translation": [ 0, -2, 3.5 ],
+            "scale": [ 0.97, 0.97, 0.97 ]
+        },
+        "thirdperson_lefthand": {
+            "rotation": [ -80, -280, 40 ],
+            "translation": [ 0, -2, 3.5 ],
+            "scale": [ 0.97, 0.97, 0.97 ]
+        },
+        "firstperson_righthand": {
+            "rotation": [ 0, -90, 25 ],
+            "translation": [ 1.13, 3.2, 1.13],
+            "scale": [ 0.660, 0.660, 0.660 ]
+        },
+        "firstperson_lefthand": {
+            "rotation": [ 0, 90, -25 ],
+            "translation": [ 1.13, 3.2, 1.13],
+            "scale": [ 0.660, 0.660, 0.660 ]
+        },
+        "gui": {
+            "rotation": [ 0, 0, 0 ],
+            "translation": [ 0, 0, 0 ],
+            "scale": [ 1.4, 1.4, 1.4 ]
+        }
+    },
+    "elements": [
+        {
+            "name": "grip",
+            "from": [7, 6, 7],
+            "to": [9, 10, 9],
+            "faces": {
+                "north": { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "south": { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "east":  { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "west":  { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "up":    { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "down":  { "uv": [0, 0, 16, 16], "texture": "#wood" }
+            }
+        },
+        {
+            "name": "upper_limb",
+            "from": [7.5, 10, 7.5],
+            "to": [8.5, 15, 8.5],
+            "rotation": { "angle": 22.5, "axis": "x", "origin": [8, 10, 8] },
+            "faces": {
+                "north": { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "south": { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "east":  { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "west":  { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "up":    { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "down":  { "uv": [0, 0, 16, 16], "texture": "#wood" }
+            }
+        },
+        {
+            "name": "lower_limb",
+            "from": [7.5, 1, 7.5],
+            "to": [8.5, 6, 8.5],
+            "rotation": { "angle": -22.5, "axis": "x", "origin": [8, 6, 8] },
+            "faces": {
+                "north": { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "south": { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "east":  { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "west":  { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "up":    { "uv": [0, 0, 16, 16], "texture": "#wood" },
+                "down":  { "uv": [0, 0, 16, 16], "texture": "#wood" }
+            }
+        },
+        {
+            "name": "string",
+            "from": [7.9, 1.5, 5.8],
+            "to": [8.1, 14.5, 6.0],
+            "faces": {
+                "north": { "uv": [0, 0, 16, 16], "texture": "#string" },
+                "south": { "uv": [0, 0, 16, 16], "texture": "#string" },
+                "east":  { "uv": [0, 0, 16, 16], "texture": "#string" },
+                "west":  { "uv": [0, 0, 16, 16], "texture": "#string" },
+                "up":    { "uv": [0, 0, 16, 16], "texture": "#string" },
+                "down":  { "uv": [0, 0, 16, 16], "texture": "#string" }
+            }
+        }
+    ]
+}

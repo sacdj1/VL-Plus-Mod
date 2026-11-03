@@ -1,0 +1,7 @@
+{
+    "parent": "item/vlplus_bow3d_base",
+    "textures": {
+        "wood": "item/vlplus_bow3d_t7_deactivate_wood",
+        "string": "item/vlplus_bow3d_string"
+    }
+}
