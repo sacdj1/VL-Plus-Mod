@@ -109,6 +109,13 @@ public class FightRecorder extends Module {
         .build()
     );
 
+    private final Setting<Boolean> recordHealth = sgGeneral.add(new BoolSetting.Builder()
+        .name("health")
+        .description("Records your own health (and active status effects - id, amplifier, remaining duration in ticks) every tick it actually changes - for working out exactly how a server heal/potion behaves (total healed, over how long, whether it's really a vanilla status effect underneath) instead of guessing.")
+        .defaultValue(true)
+        .build()
+    );
+
     private final Setting<Integer> maxMinutes = sgGeneral.add(new IntSetting.Builder()
         .name("max-minutes")
         .description("Stops the recording by itself after this many minutes, so a forgotten recording can't fill the disk.")
@@ -128,6 +135,13 @@ public class FightRecorder extends Module {
     // "bossbar" line when something about it actually changed, instead of once per frame per bar.
     private final java.util.Map<java.util.UUID, String> lastBossBarState = new java.util.HashMap<>();
 
+    // Same dedup idea as lastBossBarState above, for Record Health - only writes a "health" line
+    // when the health value or the active-effects set actually changed since last tick, not every
+    // tick regardless (same no-silent-spam reasoning, just file-based instead of chat-based here).
+    private float lastRecordedHealth = -1;
+    private String lastRecordedEffects = "";
+    private String lastRecordedNametag = "";
+
     public FightRecorder() {
         super(Categories.Debug, "fight-recorder", "Records particles, entities, chat, sounds and more during a boss fight to a file for later analysis.", "recorder", "boss-recorder", "logger");
         hidden = true;
@@ -143,6 +157,9 @@ public class FightRecorder extends Module {
             startMs = System.currentTimeMillis();
             tickCounter = 0;
             lastBossBarState.clear();
+            lastRecordedHealth = -1;
+            lastRecordedEffects = "";
+            lastRecordedNametag = "";
             info("Recording to %s", file.getFileName());
         } catch (IOException e) {
             error("Couldn't start recording: %s", e.getMessage());
@@ -207,6 +224,37 @@ public class FightRecorder extends Module {
         }
 
         write("block", "\"x\":" + pos.getX() + ",\"y\":" + pos.getY() + ",\"z\":" + pos.getZ() + ",\"id\":" + q(id));
+    }
+
+    private void trackHealth() {
+        float health = mc.player.getHealth();
+        float maxHealth = mc.player.getMaxHealth();
+        // The vanilla attribute above is capped at 20 and tells us nothing once it saturates -
+        // this server's real (hundreds-scale) health lives in the displayed name instead (same
+        // text HealthBarHud's own Nametag source reads), so that's captured raw here too instead
+        // of pre-guessing a regex for it.
+        String nametag = mc.player.getDisplayName().getString();
+
+        StringBuilder effects = new StringBuilder("[");
+        boolean first = true;
+        for (net.minecraft.entity.effect.StatusEffectInstance effect : mc.player.getStatusEffects()) {
+            if (!first) effects.append(',');
+            first = false;
+
+            effects.append("{\"id\":").append(q(effect.getEffectType().getIdAsString()))
+                .append(",\"amplifier\":").append(effect.getAmplifier())
+                .append(",\"duration\":").append(effect.getDuration())
+                .append('}');
+        }
+        effects.append(']');
+        String effectsStr = effects.toString();
+
+        if (health == lastRecordedHealth && effectsStr.equals(lastRecordedEffects) && nametag.equals(lastRecordedNametag)) return;
+        lastRecordedHealth = health;
+        lastRecordedEffects = effectsStr;
+        lastRecordedNametag = nametag;
+
+        write("health", String.format(java.util.Locale.ROOT, "\"health\":%.2f,\"maxHealth\":%.2f,\"nametag\":%s,\"effects\":%s", health, maxHealth, q(nametag), effectsStr));
     }
 
     @EventHandler
@@ -293,6 +341,8 @@ public class FightRecorder extends Module {
             toggle();
             return;
         }
+
+        if (recordHealth.get()) trackHealth();
 
         if (!recordSnapshots.get() || ++tickCounter < snapshotTicks.get()) return;
         tickCounter = 0;

@@ -122,6 +122,8 @@ public class Friends extends System<Friends> implements Iterable<Friend> {
                 ? new Friend(name, UndashedUuid.fromStringLenient(uuid))
                 : new Friend(name);
 
+            friend.pingsEnabled = !friendTag.contains("pingsEnabled") || friendTag.getBoolean("pingsEnabled");
+
             friends.add(friend);
         }
 

@@ -15,6 +15,12 @@ public class WeightedColorEntry {
     public BlendMode blend = BlendMode.SameBlock;
     public Mode mode = Mode.Replace;
 
+    /** HueShift mode only - how fast the hue swings. Same convention as ParticleRecolor/ItemInfo's own Hue Shift Speed. */
+    public double hueShiftSpeed = 1.0;
+
+    /** HueShift mode only - how many degrees the hue swings away from this entry's own color in each direction. */
+    public double hueShiftRange = 60.0;
+
     public WeightedColorEntry(SettingColor color, int weight) {
         this(color, weight, BlendMode.SameBlock, Mode.Replace);
     }
@@ -35,6 +41,8 @@ public class WeightedColorEntry {
         tag.putInt("weight", weight);
         tag.putString("blend", blend.name());
         tag.putString("mode", mode.name());
+        tag.putDouble("hueShiftSpeed", hueShiftSpeed);
+        tag.putDouble("hueShiftRange", hueShiftRange);
 
         return tag;
     }
@@ -59,7 +67,11 @@ public class WeightedColorEntry {
             }
         }
 
-        return new WeightedColorEntry(color, weight, blend, mode);
+        WeightedColorEntry entry = new WeightedColorEntry(color, weight, blend, mode);
+        if (tag.contains("hueShiftSpeed")) entry.hueShiftSpeed = tag.getDouble("hueShiftSpeed");
+        if (tag.contains("hueShiftRange")) entry.hueShiftRange = tag.getDouble("hueShiftRange");
+
+        return entry;
     }
 
     public enum BlendMode {
@@ -82,6 +94,10 @@ public class WeightedColorEntry {
         // the picked color regardless of what the block's real texture looks like, instead of
         // drifting toward it. Only ever darkens relative to Replace at the same alpha - a GPU
         // multiply can't brighten past the texture's own max.
-        Colorize
+        Colorize,
+        // Same Colorize correction, but the target color continuously swings its hue over time
+        // instead of staying fixed - this entry's own color is the swing's starting point (Hue
+        // Shift Speed/Range pick how it moves), same math as Particle Color's own HueShift mode.
+        HueShift
     }
 }

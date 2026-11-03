@@ -27,10 +27,18 @@ public class ParticleRecolor extends SettingColor {
         /** Multiplies the particle's color by the tint - only ever darkens/filters. */
         Multiply,
         /** Adds the tint on top of the particle's own color - only ever brightens. */
-        Add
+        Add,
+        /** Same Colorize correction, but the target color continuously swings its hue over time instead of staying fixed - this entry's own color is the swing's starting point (Hue Shift Speed/Range below pick how it moves), keeping saturation/brightness/alpha fixed the same way ItemInfo's own Hue Shift color mode does. */
+        HueShift
     }
 
     public Mode mode = Mode.Colorize;
+
+    /** HueShift mode only - how fast the hue swings. Same convention/scale as ItemInfo's own Enchant/Attachment Hue Shift Speed. */
+    public double hueShiftSpeed = 1.0;
+
+    /** HueShift mode only - how many degrees the hue swings away from this entry's own color in each direction. */
+    public double hueShiftRange = 60.0;
 
     public ParticleRecolor(int r, int g, int b, int a) {
         super(r, g, b, a);
@@ -38,6 +46,10 @@ public class ParticleRecolor extends SettingColor {
 
     public ParticleRecolor(SettingColor other) {
         super(other);
-        if (other instanceof ParticleRecolor recolor) mode = recolor.mode;
+        if (other instanceof ParticleRecolor recolor) {
+            mode = recolor.mode;
+            hueShiftSpeed = recolor.hueShiftSpeed;
+            hueShiftRange = recolor.hueShiftRange;
+        }
     }
 }

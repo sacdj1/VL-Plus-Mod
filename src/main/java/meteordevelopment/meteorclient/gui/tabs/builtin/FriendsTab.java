@@ -89,6 +89,13 @@ public class FriendsTab extends Tab {
                 table.add(theme.texture(32, 32, friend.getHead().needsRotate() ? 90 : 0, friend.getHead()));
                 table.add(theme.label(friend.getName()));
 
+                table.add(theme.label("Pings"));
+                var pings = table.add(theme.checkbox(friend.pingsEnabled)).widget();
+                pings.action = () -> {
+                    friend.pingsEnabled = pings.checked;
+                    Friends.get().save();
+                };
+
                 WMinus remove = table.add(theme.minus()).expandCellX().right().widget();
                 remove.action = () -> {
                     Friends.get().remove(friend);

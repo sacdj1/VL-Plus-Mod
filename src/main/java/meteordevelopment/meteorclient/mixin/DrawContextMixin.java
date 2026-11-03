@@ -172,7 +172,7 @@ public abstract class DrawContextMixin implements IDrawContext {
         if (!module.isActive()) return original;
 
         ItemInfo.QualityInfo info = module.getDurabilityBarOverride(stack);
-        return info != null ? module.getBarColor(info) : original;
+        return info != null ? module.getBarColor(stack, info) : original;
     }
 
     // Vanilla HUD element alpha, part 2: drawGuiTexture's own colorless path (used for hearts/food/

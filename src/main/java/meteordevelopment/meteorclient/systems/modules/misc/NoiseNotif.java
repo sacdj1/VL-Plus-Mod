@@ -550,15 +550,16 @@ public class NoiseNotif extends Module {
             meteordevelopment.meteorclient.systems.modules.render.ItemInfo.QualityInfo info = itemInfo.getQualityInfo(stack);
             if (info == null || info.qualityPercent() == null) continue;
 
-            checkQualityRulesAgainst(stack, info.qualityPercent());
+            checkQualityRulesAgainst(stack, slot, info.qualityPercent());
         }
     }
 
-    private void checkQualityRulesAgainst(net.minecraft.item.ItemStack stack, int qualityPercent) {
+    private void checkQualityRulesAgainst(net.minecraft.item.ItemStack stack, net.minecraft.entity.EquipmentSlot slot, int qualityPercent) {
         long now = System.currentTimeMillis();
 
         for (ReaderRule rule : List.copyOf(readerRules.get())) {
             if (!rule.watchQuality) continue;
+            if (!rule.matchesQualitySlot(slot)) continue;
             if (now - rule.lastTriggeredMs < rule.cooldownSeconds * 1000) continue;
             if (!rule.matchesQuality(qualityPercent)) continue;
 
@@ -597,7 +598,7 @@ public class NoiseNotif extends Module {
     private void dispatch(ReaderRule rule, Text matchedText) {
         if (rule.notifySound) {
             SoundEvent soundEvent = resolveRuleSound(rule);
-            if (soundEvent != null) playSound(soundEvent);
+            if (soundEvent != null) playSound(soundEvent, volume.get() * rule.volume, overrideVolume.get(), overrideVolumeAmount.get());
         }
 
         if (rule.notifyToast) {
@@ -669,11 +670,6 @@ public class NoiseNotif extends Module {
         }
 
         return null;
-    }
-
-    /** Used directly by Reader Notif's Sound channel (dispatch()) - shares the ability-ready sound's own volume settings above. */
-    private void playSound(SoundEvent soundEvent) {
-        playSound(soundEvent, volume.get(), overrideVolume.get(), overrideVolumeAmount.get());
     }
 
     private void playSound(SoundEvent soundEvent, double volumeSetting, boolean overrideVolumeSetting, double overrideAmountSetting) {

@@ -156,6 +156,7 @@ public class Hud extends System<Hud> implements Iterable<HudElement> {
         register(ChestplateSlotHud.INFO);
         register(LeggingsSlotHud.INFO);
         register(HealthBarHud.INFO);
+        register(DamageInfoHud.INFO);
         register(DamageNumbersHud.INFO);
         register(StaminaBarHud.INFO);
         register(InventoryHud.INFO);

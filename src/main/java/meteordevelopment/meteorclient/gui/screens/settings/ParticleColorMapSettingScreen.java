@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.gui.widgets.WQuad;
 import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WSection;
 import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
+import meteordevelopment.meteorclient.gui.widgets.input.WDoubleEdit;
 import meteordevelopment.meteorclient.gui.widgets.input.WDropdown;
 import meteordevelopment.meteorclient.gui.widgets.input.WIntEdit;
 import meteordevelopment.meteorclient.gui.widgets.input.WTextBox;
@@ -120,7 +121,24 @@ public class ParticleColorMapSettingScreen extends WindowScreen {
                 modeDropdown.action = () -> {
                     recolor.mode = modeDropdown.get();
                     setting.onChanged();
+                    reload();
                 };
+
+                if (recolor.mode == ParticleRecolor.Mode.HueShift) {
+                    list.add(theme.label("Speed"));
+                    WDoubleEdit hueSpeed = list.add(theme.doubleEdit(recolor.hueShiftSpeed, 0.1, 10)).widget();
+                    hueSpeed.action = () -> {
+                        recolor.hueShiftSpeed = hueSpeed.get();
+                        setting.onChanged();
+                    };
+
+                    list.add(theme.label("Range"));
+                    WDoubleEdit hueRange = list.add(theme.doubleEdit(recolor.hueShiftRange, 0, 180)).widget();
+                    hueRange.action = () -> {
+                        recolor.hueShiftRange = hueRange.get();
+                        setting.onChanged();
+                    };
+                }
             }
 
             WQuad quad = list.add(theme.quad(color)).widget();

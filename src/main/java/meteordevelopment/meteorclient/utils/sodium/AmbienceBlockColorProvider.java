@@ -120,20 +120,45 @@ public class AmbienceBlockColorProvider implements ColorProvider<BlockState> {
         );
     }
 
-    // Only the PRIMARY entry for the current position/quad gets Colorize-corrected - the quad (and
-    // therefore its sprite) is only available here, not inside blendedFor's per-neighbour-sample
-    // getColor() override, which has no quad context for whatever block each individual sample
-    // lands on. Neighbouring samples pulled in by SameBlock/AnyBlock blending keep using the entry's
-    // raw, uncorrected color - a documented limitation, not a bug.
-    private static SettingColor effectiveColor(WeightedColorEntry entry, ModelQuadView quad) {
-        if (entry.mode != WeightedColorEntry.Mode.Colorize) return entry.color;
+    // Same math as ParticleManagerMixin's HueShift case - the target fed into colorizeCorrect's own
+    // per-channel correction continuously swings its hue over time instead of staying fixed. A
+    // gray/white entry color has no hue to shift, so it's still a no-op on those, same reasoning
+    // as Colorize's own white-is-identity case right above.
+    // Plain flat tint, like Replace - NOT run through colorizeCorrect's average-divide math. That
+    // correction runs at full strength whenever the tint is saturated, which a rotating hue always
+    // is, so every cycle through red/green/blue/cyan/magenta/yellow divided one or two whole
+    // channels toward zero across the ENTIRE block face (not per-pixel - a vertex tint can't do
+    // per-pixel), which read as the block going black, repeatedly. A real hue shift rotates each
+    // pixel's own hue while keeping its own detail, which a vertex tint can't do at all (same
+    // ceiling as true grayscale-then-colorize) - this is the closest safe approximation, same as
+    // particles' own HueShift mode.
+    private static SettingColor hueShiftCorrect(WeightedColorEntry entry) {
+        SettingColor color = entry.color;
 
-        // ModelQuadView.getSprite() isn't implemented for every quad backing - confirmed crash:
-        // FRAPI mesh-based quads (QuadViewImpl, used by Continuity's CTM/emissive models and by our
-        // own ForceTintedBakedModel for force-tinting an otherwise-untinted block like Fire) throw
-        // UnsupportedOperationException unconditionally instead of returning a real sprite. Falling
-        // back to the entry's raw color (same as Replace) for those rather than crashing the chunk
-        // mesh worker - there's no sprite to correct against there anyway.
+        float[] hsb = java.awt.Color.RGBtoHSB(color.r, color.g, color.b, null);
+        double time = System.currentTimeMillis() / 1000.0 * entry.hueShiftSpeed;
+        double offset = Math.sin(time) * entry.hueShiftRange;
+        float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
+
+        int shifted = java.awt.Color.HSBtoRGB(hue / 360f, hsb[1], hsb[2]);
+        return new SettingColor((shifted >> 16) & 0xFF, (shifted >> 8) & 0xFF, shifted & 0xFF, color.a);
+    }
+
+    // Only the PRIMARY entry for the current position/quad gets Colorize/HueShift-corrected - the
+    // quad (and therefore its sprite) is only available here, not inside blendedFor's per-neighbour-
+    // sample getColor() override, which has no quad context for whatever block each individual
+    // sample lands on. Neighbouring samples pulled in by SameBlock/AnyBlock blending keep using the
+    // entry's raw, uncorrected color - a documented limitation, not a bug.
+    private static SettingColor effectiveColor(WeightedColorEntry entry, ModelQuadView quad) {
+        if (entry.mode != WeightedColorEntry.Mode.Colorize && entry.mode != WeightedColorEntry.Mode.HueShift) return entry.color;
+
+        // HueShift doesn't need the sprite at all (plain flat tint, see hueShiftCorrect above), so
+        // it works even on FRAPI mesh-based quads that can't provide one - only Colorize needs the
+        // try/catch below for those (QuadViewImpl - Continuity's CTM/emissive models, our own
+        // ForceTintedBakedModel for Fire - throws UnsupportedOperationException unconditionally
+        // instead of returning a real sprite).
+        if (entry.mode == WeightedColorEntry.Mode.HueShift) return hueShiftCorrect(entry);
+
         try {
             return colorizeCorrect(entry.color, quad.getSprite());
         } catch (UnsupportedOperationException e) {

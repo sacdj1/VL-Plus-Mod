@@ -544,6 +544,52 @@ public class Ambience extends Module {
         .build()
     );
 
+    // Season Elements - blanket kill-switches independent of every individual season's own
+    // per-dimension/per-channel toggles above. E.g. turning Sky off here means NO season (Spring,
+    // Summer, Autumn, Winter, or a preview) ever touches sky color, full stop - without having to
+    // go into all four seasons across all three dimensions and turn their own Sky toggle off one
+    // by one. A manual override (Custom Sky Color etc.) already took priority over Seasons
+    // regardless - this just removes Seasons from the picture entirely for that one element.
+    public final Setting<Boolean> seasonAffectSky = sgPresets.add(new BoolSetting.Builder()
+        .name("season-affect-sky")
+        .description("Lets any season (and Auto Season's fade) change sky color at all. Off = Seasons never touches sky, no matter which season or dimension.")
+        .defaultValue(true)
+        .visible(autoSeasonEnabled::get)
+        .build()
+    );
+
+    public final Setting<Boolean> seasonAffectClouds = sgPresets.add(new BoolSetting.Builder()
+        .name("season-affect-clouds")
+        .description("Lets any season change cloud color at all. Off = Seasons never touches clouds.")
+        .defaultValue(true)
+        .visible(autoSeasonEnabled::get)
+        .build()
+    );
+
+    public final Setting<Boolean> seasonAffectLightning = sgPresets.add(new BoolSetting.Builder()
+        .name("season-affect-lightning")
+        .description("Lets any season change lightning color at all. Off = Seasons never touches lightning.")
+        .defaultValue(true)
+        .visible(autoSeasonEnabled::get)
+        .build()
+    );
+
+    public final Setting<Boolean> seasonAffectLava = sgPresets.add(new BoolSetting.Builder()
+        .name("season-affect-lava")
+        .description("Lets any season change lava color at all. Off = Seasons never touches lava.")
+        .defaultValue(true)
+        .visible(autoSeasonEnabled::get)
+        .build()
+    );
+
+    public final Setting<Boolean> seasonAffectBlocks = sgPresets.add(new BoolSetting.Builder()
+        .name("season-affect-blocks")
+        .description("Lets any season change grass/foliage/water/individual block colors at all. Off = Seasons never touches block colors - you'll need to re-trigger a re-mesh (e.g. toggle Auto Season) to see already-meshed chunks drop their season block colors.")
+        .defaultValue(true)
+        .visible(autoSeasonEnabled::get)
+        .build()
+    );
+
     // Season Colors - four fixed, always-present color slots (one per season), each a standalone
     // set of colors Auto Season reads straight from at render time (see currentSeasonColors()) -
     // deliberately NOT a snapshot of the customGrassColor/grassColor/regions/etc. settings above.
@@ -777,6 +823,8 @@ public class Ambience extends Module {
 
     /** this season's own per-block color list for a block (its individual entries, or its Override Grass/Foliage/Water/Entire Season sentinel), the same lowest-priority tier a Region/Biome/Global block config would otherwise leave to plain vanilla. Never fades - see currentSeasonBlend()'s own note. */
     public List<WeightedColorEntry> getSeasonBlockColors(Block block) {
+        if (!seasonAffectBlocks.get()) return null;
+
         AmbienceSeasonColors season = currentSeasonColors();
         if (season == null) return null;
 
@@ -894,6 +942,7 @@ public class Ambience extends Module {
     /** Custom Sky Color if it's on, else the active season's own sky color for the current dimension if one's active AND that specific channel is enabled for it, else null (caller keeps vanilla). */
     public SettingColor effectiveSkyColor() {
         if (customSkyColor.get()) return skyColor();
+        if (!seasonAffectSky.get()) return null;
 
         return blendedSeasonColor(season -> switch (PlayerUtils.getDimension()) {
             case Nether -> season.netherSkyEnabled ? season.netherSky : null;
@@ -904,18 +953,21 @@ public class Ambience extends Module {
 
     public SettingColor effectiveCloudColor() {
         if (customCloudColor.get()) return cloudColor.get();
+        if (!seasonAffectClouds.get()) return null;
 
         return blendedSeasonColor(season -> season.cloudEnabled ? season.cloud : null);
     }
 
     public SettingColor effectiveLightningColor() {
         if (changeLightningColor.get()) return lightningColor.get();
+        if (!seasonAffectLightning.get()) return null;
 
         return blendedSeasonColor(season -> season.lightningEnabled ? season.lightning : null);
     }
 
     public SettingColor effectiveLavaColor() {
         if (customLavaColor.get()) return lavaColor.get();
+        if (!seasonAffectLava.get()) return null;
 
         return blendedSeasonColor(season -> season.lavaEnabled ? season.lava : null);
     }

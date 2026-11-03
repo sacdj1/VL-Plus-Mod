@@ -649,6 +649,13 @@ public class ParticleColor extends Module {
         return entry != null ? entry : Color.WHITE;
     }
 
+    /** The matched entry itself (for HueShift mode's own Speed/Range, which live on the entry, not as a shared module-level setting) - null if nothing matched or the match isn't a ParticleRecolor. */
+    public ParticleRecolor getRecolorEntry(ParticleEffect parameters) {
+        ParticleKey key = ParticleKey.from(parameters);
+        SettingColor entry = isGeneralMatch(parameters) ? particleColors.get().get(key) : hitParticleTypes.get().get(key);
+        return entry instanceof ParticleRecolor recolor ? recolor : null;
+    }
+
     /** How see-through the final recolored particle is, independent of the tint's own blend strength. */
     public float getOverallAlpha() {
         return overallAlpha.get() / 255f;

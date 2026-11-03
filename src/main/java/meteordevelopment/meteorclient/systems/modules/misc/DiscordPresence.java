@@ -11,6 +11,7 @@ import meteordevelopment.discordipc.DiscordIPC;
 import meteordevelopment.discordipc.RichPresence;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.game.OpenScreenEvent;
+import meteordevelopment.meteorclient.events.render.Render3DEvent;
 import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.gui.GuiTheme;
 import meteordevelopment.meteorclient.gui.WidgetScreen;
@@ -18,11 +19,13 @@ import meteordevelopment.meteorclient.gui.screens.settings.NamedAreaListScreen;
 import meteordevelopment.meteorclient.gui.utils.StarscriptTextBoxRenderer;
 import meteordevelopment.meteorclient.gui.widgets.WWidget;
 import meteordevelopment.meteorclient.gui.widgets.pressable.WButton;
+import meteordevelopment.meteorclient.renderer.ShapeMode;
 import meteordevelopment.meteorclient.settings.*;
 import meteordevelopment.meteorclient.systems.modules.Categories;
 import meteordevelopment.meteorclient.systems.modules.Module;
 import meteordevelopment.meteorclient.utils.Utils;
 import meteordevelopment.meteorclient.utils.misc.MeteorStarscript;
+import meteordevelopment.meteorclient.utils.render.color.SettingColor;
 import meteordevelopment.orbit.EventHandler;
 import meteordevelopment.starscript.Script;
 import meteordevelopment.starscript.value.Value;
@@ -82,8 +85,8 @@ public class DiscordPresence extends Module {
 
     private final Setting<List<String>> line2Strings = sgLine2.add(new StringListSetting.Builder()
         .name("line-2-messages")
-        .description("Messages used for the second line. {player.activity} is a guess at what you're currently doing - \"Fighting X\" (recently attacked/been hit), \"Mining X\", or plain \"Exploring\" as the default.")
-        .defaultValue("{player.activity}", "{round(server.tps, 1)} TPS", "{server.bossbar}")
+        .description("Messages used for the second line. {player.activity} is a guess at what you're currently doing - \"Fighting X\" (recently attacked/been hit), \"Mining X\", or plain \"Exploring\" as the default. {server.real_player_count}/{server.real_max_player_count} come from a status ping (the same one the Multiplayer server list uses for its \"X/Y players\" line), not the tab list - the tab list's own {server.player_count} can be padded with non-real entries, so this is the one that's actually meaningful here.")
+        .defaultValue("{player.activity}", "{server.real_player_count} Players", "{round(server.tps, 1)} TPS", "{server.bossbar}")
         .onChanged(strings -> recompileLine2())
         .renderer(StarscriptTextBoxRenderer.class)
         .build()
@@ -133,6 +136,39 @@ public class DiscordPresence extends Module {
         .build()
     );
 
+    // Same idea as Ambience's own Visualize Regions - a plain full-height wireframe outline per
+    // box, not that system's chunked/FOV-culled real-boundary scan (overkill for a flat X/Z
+    // rectangle that doesn't even care about Y) - just enough to see where a zone's boxes actually
+    // sit while you're placing/checking them.
+
+    private final Setting<Boolean> visualizeZones = sgZones.add(new BoolSetting.Builder()
+        .name("visualize-zones")
+        .description("Draws a wireframe outline for every box of every Visualize-enabled area above, spanning the full world height.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<SettingColor> visualizeLineColor = sgZones.add(new ColorSetting.Builder()
+        .name("visualize-line-color")
+        .defaultValue(new SettingColor(255, 255, 255, 255))
+        .visible(visualizeZones::get)
+        .build()
+    );
+
+    private final Setting<SettingColor> visualizeSideColor = sgZones.add(new ColorSetting.Builder()
+        .name("visualize-side-color")
+        .defaultValue(new SettingColor(255, 255, 255, 20))
+        .visible(visualizeZones::get)
+        .build()
+    );
+
+    private final Setting<ShapeMode> visualizeShapeMode = sgZones.add(new EnumSetting.Builder<ShapeMode>()
+        .name("visualize-shape-mode")
+        .defaultValue(ShapeMode.Both)
+        .visible(visualizeZones::get)
+        .build()
+    );
+
     private static final RichPresence rpc = new RichPresence();
     private SmallImage currentSmallImage;
     private int ticks;
@@ -165,6 +201,25 @@ public class DiscordPresence extends Module {
         // regardless of whether this module is currently active, same as every other value already
         // registered in MeteorStarscript's own init().
         MeteorStarscript.ss.set("zone", new ValueMap().set("current", DiscordPresence::currentAreaName));
+    }
+
+    @EventHandler
+    private void onRender(Render3DEvent event) {
+        if (!visualizeZones.get() || MeteorClient.mc.world == null) return;
+
+        double minY = MeteorClient.mc.world.getBottomY(), maxY = MeteorClient.mc.world.getTopY();
+
+        for (NamedArea area : areas.get()) {
+            if (!area.visualize) continue;
+
+            for (NamedArea.Box box : area.boxes) {
+                event.renderer.box(
+                    Math.min(box.x1, box.x2), minY, Math.min(box.z1, box.z2),
+                    Math.max(box.x1, box.x2) + 1, maxY, Math.max(box.z1, box.z2) + 1,
+                    visualizeSideColor.get(), visualizeLineColor.get(), visualizeShapeMode.get(), 0
+                );
+            }
+        }
     }
 
     private static Value currentAreaName() {

@@ -163,6 +163,38 @@ public abstract class ParticleManagerMixin {
                 // have no safe neutral sprite to swap to in this codebase today (the particle atlas
                 // doesn't have one registered the way the block atlas has WHITE_CONCRETE) - those fall
                 // through to the plain tint below, same ceiling as every texture-preserving mode.
+                // HueShift: same Colorize correction as above, but the target color continuously
+                // swings its hue over time (this entry's own color is the swing's starting point,
+                // its own Hue Shift Speed/Range settings pick how it moves) instead of staying
+                // fixed - same shared math ItemInfo's own Enchant/Attachment Hue Shift color mode
+                // uses. Subject to the exact same correction/saturation behavior as Colorize right
+                // above (including: a gray/white starting color has no hue to shift, so it's still
+                // a no-op on those, same reasoning as Colorize's own white-is-identity case).
+                // A real hue shift rotates each PIXEL's own hue while keeping its own detail - a
+                // vertex tint can't do that (same hard ceiling as true grayscale-then-colorize, see
+                // Colorize's own history above). Earlier version of this ran the rotating color
+                // through Colorize's average-divide correction anyway - but that correction runs at
+                // FULL strength whenever the tint is saturated, which a rotating hue always is, so
+                // every cycle through red/green/blue/cyan/magenta/yellow divided one or two whole
+                // channels toward zero across the ENTIRE sprite (not per-pixel), which read as the
+                // particle going black, repeatedly, not just a one-off glitch. Plain flat tint
+                // instead - same as Replace/Blend already do for a fixed color, just animated - lets
+                // the real texture multiply against it normally instead of fighting it.
+                case HueShift -> {
+                    ParticleRecolor recolor = particleColor.getRecolorEntry(parameters);
+                    double speed = recolor != null ? recolor.hueShiftSpeed : 1.0;
+                    double range = recolor != null ? recolor.hueShiftRange : 60.0;
+
+                    float[] hsb = java.awt.Color.RGBtoHSB(Math.round(tr * 255), Math.round(tg * 255), Math.round(tb * 255), null);
+                    double time = System.currentTimeMillis() / 1000.0 * speed;
+                    double offset = Math.sin(time) * range;
+                    float hue = (float) (((hsb[0] * 360.0 + offset) % 360.0 + 360.0) % 360.0);
+
+                    int shifted = java.awt.Color.HSBtoRGB(hue / 360f, hsb[1], hsb[2]);
+                    r = (shifted >> 16 & 0xFF) / 255f;
+                    g = (shifted >> 8 & 0xFF) / 255f;
+                    b = (shifted & 0xFF) / 255f;
+                }
                 case Override, OverrideOutline -> {
                     if (particle instanceof SpriteBillboardParticle && particle.getType() == ParticleTextureSheet.TERRAIN_SHEET) {
                         Sprite neutral = MinecraftClient.getInstance().getBlockRenderManager().getModels().getModelParticleSprite(Blocks.WHITE_CONCRETE.getDefaultState());

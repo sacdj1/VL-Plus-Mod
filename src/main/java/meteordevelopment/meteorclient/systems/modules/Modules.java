@@ -623,6 +623,7 @@ public class Modules extends System<Modules> {
         add(new FallCancel());
         add(new LineOfSight());
         add(new Visualizer());
+        add(new WeaponModels());
         add(new CheeseControl());
     }
 

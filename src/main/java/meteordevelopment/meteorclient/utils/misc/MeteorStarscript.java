@@ -8,6 +8,7 @@ package meteordevelopment.meteorclient.utils.misc;
 import meteordevelopment.meteorclient.MeteorClient;
 import meteordevelopment.meteorclient.events.entity.player.AttackEntityEvent;
 import meteordevelopment.meteorclient.events.render.RenderBossBarEvent;
+import meteordevelopment.meteorclient.events.world.TickEvent;
 import meteordevelopment.meteorclient.mixin.ClientPlayerInteractionManagerAccessor;
 import meteordevelopment.meteorclient.mixin.MinecraftClientAccessor;
 import meteordevelopment.meteorclient.pathing.PathManagers;
@@ -33,7 +34,9 @@ import meteordevelopment.starscript.value.Value;
 import meteordevelopment.starscript.value.ValueMap;
 import net.minecraft.SharedConstants;
 import net.minecraft.block.BlockState;
+import net.minecraft.client.network.MultiplayerServerListPinger;
 import net.minecraft.client.network.PlayerListEntry;
+import net.minecraft.client.network.ServerInfo;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.effect.StatusEffect;
@@ -82,10 +85,33 @@ public class MeteorStarscript {
         return currentBossBarText;
     }
 
+    // Render-driven, not tick-driven - BossText only fires from BossBarHud's own render() redirect,
+    // once per actual on-screen boss bar, every frame while one exists. When the last boss bar
+    // disappears, render() simply stops reaching that redirect at all - there's no "boss bar
+    // removed" event, so without this timeout currentBossBarText stayed frozen on whatever text it
+    // last saw, forever (confirmed: {server.bossbar} kept showing a boss bar that was long gone).
+    // A real boss bar updates every frame (60+ times a second); a 1-second gap with zero updates
+    // reliably means it's actually gone, not just a slow frame.
+    private static long lastBossTextUpdateMs = 0;
+    private static final long BOSS_TEXT_STALE_MS = 1000;
+
     private static final class BossBarListener {
         @EventHandler
         private void onBossBarText(RenderBossBarEvent.BossText event) {
-            currentBossBarText = event.name.getString();
+            // Text.getString() only strips REAL Style-based formatting - this server bakes literal
+            // "§x" sequences straight into the boss bar's own text content instead of using Style
+            // colors, so they survive getString() untouched and show up raw (e.g. in Discord
+            // Presence's {server.bossbar}). Stripping them here, same convention used elsewhere in
+            // this pack (e.g. Animations/WeaponModels' own display-name matching) for the same issue.
+            currentBossBarText = event.name.getString().replaceAll("§.", "");
+            lastBossTextUpdateMs = System.currentTimeMillis();
+        }
+
+        @EventHandler
+        private void onTick(TickEvent.Post event) {
+            if (!currentBossBarText.isEmpty() && System.currentTimeMillis() - lastBossTextUpdateMs > BOSS_TEXT_STALE_MS) {
+                currentBossBarText = "";
+            }
         }
     }
 
@@ -103,12 +129,67 @@ public class MeteorStarscript {
         }
     }
 
+    // Backs server.real_player_count below - the tab list (server.player_count, getPlayerList())
+    // can't be trusted on its own for a real headcount on this server, since it's been padded with
+    // non-real entries since the tab list update. A status ping (the exact same protocol/API the
+    // Multiplayer server list screen uses to show a server's MOTD + "X/Y players" before you even
+    // connect) reports what the server itself claims for its player count instead, independent of
+    // whatever the tab list shows. Re-pinged periodically rather than once, since it can drift
+    // (players joining/leaving) for as long as you stay connected.
+    private static final long PING_INTERVAL_MS = 15_000;
+
+    private static int realOnlineCount = -1, realMaxCount = -1;
+    private static long lastPingAttempt = 0;
+    private static MultiplayerServerListPinger activePinger;
+
+    private static final class ServerPingTracker {
+        @EventHandler
+        private void onTick(TickEvent.Post event) {
+            if (activePinger != null) {
+                activePinger.tick();
+                return;
+            }
+
+            ServerInfo current = mc.getCurrentServerEntry();
+            if (current == null || current.isRealm()) return;
+
+            long now = System.currentTimeMillis();
+            if (now - lastPingAttempt < PING_INTERVAL_MS) return;
+            lastPingAttempt = now;
+
+            // A fresh ServerInfo to ping into, rather than mutating mc.getCurrentServerEntry()
+            // directly - that one may be shared with the real Multiplayer list entry (if you
+            // connected by clicking it) and isn't ours to overwrite mid-game.
+            ServerInfo pingTarget = new ServerInfo(current.name, current.address, ServerInfo.ServerType.OTHER);
+            MultiplayerServerListPinger pinger = new MultiplayerServerListPinger();
+            activePinger = pinger;
+
+            try {
+                pinger.add(pingTarget, () -> {
+                    if (pingTarget.players != null) {
+                        realOnlineCount = pingTarget.players.online();
+                        realMaxCount = pingTarget.players.max();
+                    }
+                    pinger.cancel();
+                    activePinger = null;
+                }, () -> {
+                    pinger.cancel();
+                    activePinger = null;
+                });
+            } catch (Exception e) {
+                pinger.cancel();
+                activePinger = null;
+            }
+        }
+    }
+
     @PreInit(dependencies = PathManagers.class)
     public static void init() {
         StandardLib.init(ss);
 
         MeteorClient.EVENT_BUS.subscribe(new BossBarListener());
         MeteorClient.EVENT_BUS.subscribe(new CombatListener());
+        MeteorClient.EVENT_BUS.subscribe(new ServerPingTracker());
 
         // General
         ss.set("mc_version", SharedConstants.getGameVersion().getName());
@@ -221,6 +302,8 @@ public class MeteorStarscript {
             .set("tps", () -> Value.number(TickRate.INSTANCE.getTickRate()))
             .set("time", () -> Value.string(Utils.getWorldTime()))
             .set("player_count", () -> Value.number(mc.getNetworkHandler() != null ? mc.getNetworkHandler().getPlayerList().size() : 0))
+            .set("real_player_count", () -> Value.number(realOnlineCount))
+            .set("real_max_player_count", () -> Value.number(realMaxCount))
             .set("difficulty", () -> Value.string(mc.world != null ? mc.world.getDifficulty().getName() : ""))
             .set("bossbar", () -> Value.string(currentBossBarText))
         );
@@ -499,9 +582,17 @@ public class MeteorStarscript {
     // doesn't flicker back to Exploring between individual swings of a real fight.
     private static final long COMBAT_WINDOW_MS = 5000;
 
-    /** A human-readable guess at what the player is currently doing, for things like Discord Presence - "Fighting X" (recently attacked/been hit), else "Mining X" (actively breaking a block), else plain "Exploring". Deliberately doesn't fall back to the biome (e.g. "Exploring Plains") - not meaningful for Ventureland's own areas/zones, which {zone.current} already covers instead. */
+    /** A human-readable guess at what the player is currently doing, for things like Discord Presence - "Fighting X" (an active boss bar, or recently attacked/been hit), else "Mining X" (actively breaking a block), else plain "Exploring". Deliberately doesn't fall back to the biome (e.g. "Exploring Plains") - not meaningful for Ventureland's own areas/zones, which {zone.current} already covers instead. */
     private static Value activity() {
         if (mc.player == null || mc.world == null) return Value.string("");
+
+        // A visible boss bar is a far more reliable "in a boss fight" signal than recent-hit
+        // tracking below - that one lapses back to Exploring during any 5+ second gap without
+        // landing/taking a hit (ranged fights, phases where you're just dodging, watching a group
+        // fight), even while the boss bar is still right there on screen saying otherwise.
+        if (!currentBossBarText.isEmpty()) {
+            return Value.string("Fighting " + currentBossBarText);
+        }
 
         boolean recentlyHurt = mc.player.hurtTime > 0;
         boolean recentlyAttacked = System.currentTimeMillis() - lastCombatTime <= COMBAT_WINDOW_MS;

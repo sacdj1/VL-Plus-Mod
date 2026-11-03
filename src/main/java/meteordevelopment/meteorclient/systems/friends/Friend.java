@@ -24,6 +24,9 @@ public class Friend implements ISerializable<Friend>, Comparable<Friend> {
     private volatile @Nullable PlayerHeadTexture headTexture;
     private volatile boolean updating;
 
+    /** Whether this friend's relayed pings (party/group/public chat) actually show for you - the Pings module's own All/Friends Only filter still applies on top of this, this is just a per-friend override/mute. */
+    public volatile boolean pingsEnabled = true;
+
     public Friend(String name, @Nullable UUID id) {
         this.name = name;
         this.id = id;
@@ -65,6 +68,7 @@ public class Friend implements ISerializable<Friend>, Comparable<Friend> {
 
         tag.putString("name", name);
         if (id != null) tag.putString("id", UndashedUuid.toString(id));
+        tag.putBoolean("pingsEnabled", pingsEnabled);
 
         return tag;
     }

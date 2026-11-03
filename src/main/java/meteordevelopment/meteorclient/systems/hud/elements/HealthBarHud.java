@@ -597,6 +597,111 @@ public class HealthBarHud extends HudElement {
         .build()
     );
 
+    // Predicted Heal - same AppleSkin idea (predict a heal before it happens, instead of only
+    // reacting after), but built on this server's own real health values instead of vanilla's
+    // hunger/health math (which doesn't apply here - health runs in the hundreds, not 0-20).
+    // Food and Rage are fundamentally different kinds of "incoming heal" and get different
+    // treatment: Food is a genuine PREDICTION (you're holding something with a known heal amount,
+    // shown as an extension past current health, live, no fade) - Rage can't be predicted at all
+    // (confirmed: "just a byproduct of a certain big healing spike"), so it's a REACTIVE flash
+    // instead, the exact mirror of Damage Trail above but for a sudden health INCREASE rather than
+    // a decrease. Potions is a real third source but still missing a confirmed way to read "how
+    // much heal is left" on this server - present as a toggle, does nothing until that's solved.
+
+    private final Setting<Boolean> predictFoodEnabled = sgDamageHeal.add(new BoolSetting.Builder()
+        .name("predict-food")
+        .description("Extends the fill past your current health, live, while you're holding a food item with a \"Heals N Health\" lore line - shows where you'd end up if you ate it right now. Not time-based like the trails below - it's just true or not true every frame, based on what you're currently holding.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<String> foodHealPattern = sgDamageHeal.add(new StringSetting.Builder()
+        .name("food-heal-pattern")
+        .description("Regex with one capture group (the heal amount) matched against your held item's own lore line. Default matches \"Heals 50 Health\".")
+        .defaultValue("^Heals\\s+(\\d+)\\s+Health$")
+        .visible(predictFoodEnabled::get)
+        .build()
+    );
+
+    private final Setting<Void> printHeldItemLore = sgDamageHeal.add(new ButtonSetting.Builder()
+        .name("print-held-item-lore")
+        .description("Prints your currently held item's lore to chat, one line per message - use this to confirm/adjust Food Heal Pattern above.")
+        .buttonText("Print Held Item Lore")
+        .action(this::printHeldItemLore)
+        .visible(predictFoodEnabled::get)
+        .build()
+    );
+
+    private final Setting<SettingColor> predictFoodColor = sgDamageHeal.add(new ColorSetting.Builder()
+        .name("predict-food-color")
+        .description("Color of the predicted-heal extension, when Predict Food above is on.")
+        .defaultValue(new SettingColor(80, 220, 120, 140))
+        .visible(predictFoodEnabled::get)
+        .build()
+    );
+
+    private final Setting<Boolean> predictPotionsEnabled = sgDamageHeal.add(new BoolSetting.Builder()
+        .name("predict-potions")
+        .description("Not yet implemented - there's no confirmed way yet to read how much heal an active healing potion has left on this server. Safe to leave on, does nothing until that's wired in.")
+        .defaultValue(false)
+        .build()
+    );
+
+    private final Setting<Boolean> rageHealTrailEnabled = sgDamageHeal.add(new BoolSetting.Builder()
+        .name("rage-heal-trail")
+        .description("Flashes a highlight over the gained portion of the fill right after a sudden large health INCREASE (e.g. a rage ability's heal) - the exact mirror of Damage Trail above, for gains instead of losses. Rage healing can't be predicted in advance (it's just a byproduct of using the ability), so this is reactive only, same as Damage Trail is for hits.")
+        .defaultValue(true)
+        .build()
+    );
+
+    private final Setting<Double> rageHealThreshold = sgDamageHeal.add(new DoubleSetting.Builder()
+        .name("rage-heal-threshold")
+        .description("Ignores a health increase smaller than this - normal regen ticking up, rounding jitter, etc. Set above your server's normal regen-per-tick so only real spikes (rage, etc.) trigger the flash.")
+        .defaultValue(5)
+        .min(0)
+        .sliderRange(0, 50)
+        .visible(rageHealTrailEnabled::get)
+        .build()
+    );
+
+    private final Setting<Integer> rageHealCombineWindow = sgDamageHeal.add(new IntSetting.Builder()
+        .name("rage-heal-combine-window")
+        .description("Several health gains within this many milliseconds of each other are added together into one flash instead of restarting for every tick health increases.")
+        .defaultValue(150)
+        .min(0)
+        .sliderRange(0, 1000)
+        .visible(rageHealTrailEnabled::get)
+        .build()
+    );
+
+    private final Setting<Integer> rageHealDisplayDuration = sgDamageHeal.add(new IntSetting.Builder()
+        .name("rage-heal-display-duration")
+        .description("How long, in milliseconds, the flash stays fully visible before it starts fading away.")
+        .defaultValue(350)
+        .min(0)
+        .sliderRange(0, 3000)
+        .visible(rageHealTrailEnabled::get)
+        .build()
+    );
+
+    private final Setting<Integer> rageHealFadeDuration = sgDamageHeal.add(new IntSetting.Builder()
+        .name("rage-heal-fade-duration")
+        .description("How long, in milliseconds, the flash takes to fade away after Rage Heal Display Duration above ends.")
+        .defaultValue(350)
+        .min(0)
+        .sliderRange(0, 2000)
+        .visible(rageHealTrailEnabled::get)
+        .build()
+    );
+
+    private final Setting<SettingColor> rageHealTrailColor = sgDamageHeal.add(new ColorSetting.Builder()
+        .name("rage-heal-trail-color")
+        .description("Color of the rage heal flash.")
+        .defaultValue(new SettingColor(120, 255, 170, 200))
+        .visible(rageHealTrailEnabled::get)
+        .build()
+    );
+
     // Background Color (Rainbow)
 
     private final Setting<RainbowTransition> backgroundRainbowTransition = sgBackgroundRainbow.add(new EnumSetting.Builder<RainbowTransition>()
@@ -1149,6 +1254,15 @@ public class HealthBarHud extends HudElement {
     private double shownDamage = 0;
     private long shownDamageAtMs = -1;
 
+    // Rage heal trail tracking - exact mirror of the damage trail fields above, for a sudden
+    // health INCREASE instead of a decrease. Shares the same per-tick sample (healthInitialized/
+    // lastHealthSample) rather than sampling health twice.
+    private double pendingHeal = 0;
+    private long pendingHealLastMs = 0;
+
+    private double shownHeal = 0;
+    private long shownHealAtMs = -1;
+
     public HealthBarHud() {
         super(INFO);
         calculateSize();
@@ -1185,7 +1299,7 @@ public class HealthBarHud extends HudElement {
             if (lowFlashTicksRemaining > 0) lowFlashTicksRemaining--;
         }
 
-        if (damageTrailEnabled.get()) trackDamageTrail();
+        if (damageTrailEnabled.get() || rageHealTrailEnabled.get()) trackDamageTrail();
     }
 
     private void trackDamageTrail() {
@@ -1203,7 +1317,7 @@ public class HealthBarHud extends HudElement {
         float delta = current - lastHealthSample;
         lastHealthSample = current;
 
-        if (delta < 0) {
+        if (delta < 0 && damageTrailEnabled.get()) {
             pendingDamage += -delta;
             pendingDamageLastMs = now;
         }
@@ -1211,6 +1325,16 @@ public class HealthBarHud extends HudElement {
         if (pendingDamage > 0 && now - pendingDamageLastMs >= trailCombineWindow.get()) {
             if (pendingDamage >= trailThreshold.get()) { shownDamage = pendingDamage; shownDamageAtMs = now; }
             pendingDamage = 0;
+        }
+
+        if (delta > 0 && rageHealTrailEnabled.get()) {
+            pendingHeal += delta;
+            pendingHealLastMs = now;
+        }
+
+        if (pendingHeal > 0 && now - pendingHealLastMs >= rageHealCombineWindow.get()) {
+            if (pendingHeal >= rageHealThreshold.get()) { shownHeal = pendingHeal; shownHealAtMs = now; }
+            pendingHeal = 0;
         }
     }
 
@@ -1225,6 +1349,68 @@ public class HealthBarHud extends HudElement {
         if (fade <= 0 || age >= duration + fade) return -1;
 
         return 1 - (age - duration) / (double) fade;
+    }
+
+    /** Same idea as indicatorAlpha above, just against the Rage Heal Trail's own independent duration/fade settings. */
+    private double healIndicatorAlpha(long shownAtMs) {
+        if (shownAtMs < 0) return -1;
+
+        long age = System.currentTimeMillis() - shownAtMs;
+        int duration = rageHealDisplayDuration.get(), fade = rageHealFadeDuration.get();
+
+        if (age < duration) return 1;
+        if (fade <= 0 || age >= duration + fade) return -1;
+
+        return 1 - (age - duration) / (double) fade;
+    }
+
+    private static final Pattern FOOD_HEAL_PATTERN_FALLBACK = Pattern.compile("^Heals\\s+(\\d+)\\s+Health$");
+
+    /** The held item's own predicted heal amount (0 if not holding something matching Food Heal Pattern, or main hand is empty/off). */
+    private double findHeldFoodHeal() {
+        if (mc.player == null) return 0;
+
+        ItemStack stack = mc.player.getMainHandStack();
+        if (stack.isEmpty()) return 0;
+
+        LoreComponent lore = stack.get(DataComponentTypes.LORE);
+        if (lore == null) return 0;
+
+        Pattern pattern;
+        try {
+            pattern = Pattern.compile(foodHealPattern.get());
+        } catch (Exception e) {
+            pattern = FOOD_HEAL_PATTERN_FALLBACK;
+        }
+
+        for (Text line : lore.lines()) {
+            Matcher m = pattern.matcher(line.getString().trim());
+            if (m.find() && m.groupCount() >= 1) {
+                try {
+                    return Double.parseDouble(m.group(1));
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        return 0;
+    }
+
+    private void printHeldItemLore() {
+        if (mc.player == null) return;
+
+        ItemStack stack = mc.player.getMainHandStack();
+        if (stack.isEmpty()) {
+            ChatUtils.info("Main hand is empty.");
+            return;
+        }
+
+        LoreComponent lore = stack.get(DataComponentTypes.LORE);
+        if (lore == null) {
+            ChatUtils.info("(no lore)");
+            return;
+        }
+
+        for (Text line : lore.lines()) ChatUtils.info("%s", line.getString());
     }
 
     // Rotates a rectangle (given in local coords relative to the box's own top-left) around the
@@ -1895,6 +2081,23 @@ public class HealthBarHud extends HudElement {
 
             drawRoundedRect(renderer, bx, by, bw, bh, insetRadius, true, true, true, true, getBackgroundColor(target));
 
+            // Predicted Heal (Food): drawn the same way the damage trail below is - a wider slice
+            // FIRST, so the narrower real fill drawn after it covers the inner portion, leaving only
+            // the outer sliver (current health up to predicted health) visible in the predict color.
+            // Live/instant, not time-based - true for as long as you're actually holding qualifying
+            // food, gone the instant you're not.
+            if (predictFoodEnabled.get() && !isInEditor() && max > 0) {
+                double heal = findHeldFoodHeal();
+                if (heal > 0) {
+                    double predictProgress = MathHelper.clamp(progress + heal / max, 0, 1);
+                    double predictW = bw * predictProgress;
+                    if (predictW > 0) {
+                        SettingColor pc = predictFoodColor.get();
+                        drawFillSlice(renderer, bx, by, bw, bh, insetRadius, predictW, f, new Color(pc.r, pc.g, pc.b, pc.a), 0);
+                    }
+                }
+            }
+
             // Damage trail: the real fill (below) is already at the NEW, lower value - this draws a
             // second, wider fill first, sized to the OLD (pre-damage) value in a distinct color, so
             // the strip between them (what you just lost) stays visible and shrinks away over the
@@ -1916,6 +2119,25 @@ public class HealthBarHud extends HudElement {
             if (progress > 0) {
                 double fillW = bw * progress;
                 drawFillSlice(renderer, bx, by, bw, bh, insetRadius, fillW, f, getFillColor(target), fillShading.get() ? fillShadingStrength.get() : 0);
+            }
+
+            // Rage heal trail: the mirror of Damage Trail, but drawn ON TOP of the already-higher
+            // real fill (not behind it) - a plain overlay highlight across just the GAINED portion
+            // (old, lower health up to current), fading away over its own display+fade timing. No
+            // rounding needed - this overlay is always fully inside the bar's own real fill, never
+            // touching either true edge.
+            if (rageHealTrailEnabled.get() && !isInEditor() && max > 0 && progress > 0) {
+                double healAlpha = healIndicatorAlpha(shownHealAtMs);
+                if (healAlpha > 0 && shownHeal > 0) {
+                    double oldFraction = MathHelper.clamp(progress - shownHeal / max * healAlpha, 0, 1);
+                    double flashW = (progress - oldFraction) * bw;
+                    if (flashW > 0) {
+                        double flashLocalX = f ? bx + oldFraction * bw : bx + bw - progress * bw;
+                        SettingColor hc = rageHealTrailColor.get();
+                        Color flashColor = new Color(hc.r, hc.g, hc.b, (int) MathHelper.clamp(hc.a * healAlpha, 0, 255));
+                        drawRotatedQuad(renderer, flashLocalX, by, flashW, bh, flashColor);
+                    }
+                }
             }
 
             // Permanent indicator - both styles draw ON TOP of the fill (not hidden behind it),

@@ -88,7 +88,11 @@ public class ParticleColorMapSetting extends Setting<Map<ParticleKey, SettingCol
             if (key.isEmpty()) continue;
 
             NbtCompound colorTag = entry.getValue().toTag();
-            if (entry.getValue() instanceof ParticleRecolor recolor) colorTag.putString("recolor-mode", recolor.mode.name());
+            if (entry.getValue() instanceof ParticleRecolor recolor) {
+                colorTag.putString("recolor-mode", recolor.mode.name());
+                colorTag.putDouble("recolor-hue-shift-speed", recolor.hueShiftSpeed);
+                colorTag.putDouble("recolor-hue-shift-range", recolor.hueShiftRange);
+            }
             valueTag.put(key, colorTag);
         }
 
@@ -114,6 +118,8 @@ public class ParticleColorMapSetting extends Setting<Map<ParticleKey, SettingCol
                     recolor.mode = ParticleRecolor.Mode.valueOf(colorTag.getString("recolor-mode"));
                 } catch (IllegalArgumentException ignored) {}
             }
+            if (colorTag.contains("recolor-hue-shift-speed")) recolor.hueShiftSpeed = colorTag.getDouble("recolor-hue-shift-speed");
+            if (colorTag.contains("recolor-hue-shift-range")) recolor.hueShiftRange = colorTag.getDouble("recolor-hue-shift-range");
             // Entries saved before modes existed: block/item particles never actually changed color
             // under the old blend-toward-tint behavior (a colored texture times a tint just goes
             // dark), so they get Colorize; everything else keeps the old blend behavior so nothing

@@ -70,6 +70,12 @@ public class ItemInfo extends Module {
     // it says "Cosmic Item [...]" instead, which the pattern above simply never matches. tierBadgeText()
     // already knew to *display* "Cosmic" for tier 7 - this is the other half, actually *detecting* one.
     private static final Pattern COSMIC_TIER_PATTERN = Pattern.compile("^Cosmic Item\\b");
+    // Broader than UNIQUE_TIER_PATTERN above - matches ANY "Tier N <rarity label>" line (plain
+    // "Tier 5", "Tier 6 Enhancer", "Tier 4 Unique Item", ...), not just the Unique one. Only used by
+    // findWeaponTierInfo() below for Weapon Models' own per-tier/per-rarity overrides - deliberately
+    // NOT used by the Tier badge above, so that feature's existing behavior (Unique/Cosmic only)
+    // doesn't change as a side effect of this.
+    private static final Pattern ANY_TIER_LINE_PATTERN = Pattern.compile("^Tier\\s+(\\d+)\\b(.*)");
     private static final Pattern TRAILING_TIER_PATTERN = Pattern.compile("\\s+[IVXLCDM]+$");
     private static final int VANILLA_LINE_HEIGHT = 9;
 
@@ -1297,7 +1303,19 @@ public class ItemInfo extends Module {
         Map.entry("Bow Arrow Speed", "➹"),
         Map.entry("More Poison Damage Vs Mobs", "☣"),
         Map.entry("More Rage Gain", "♨"),
-        Map.entry("Chance To Regen Extra Stamina", "⚡")
+        Map.entry("Chance To Regen Extra Stamina", "⚡"),
+        // Added from the 2026-11-03 item-dumps capture batch.
+        Map.entry("Armor", "🛡"),
+        Map.entry("Damage", "✹"),
+        Map.entry("Armor In Dungeons", "🏰"),
+        Map.entry("Damage In Dungeons", "⚒"),
+        Map.entry("Armor Per Missing Health", "♥"),
+        Map.entry("Chance To Save Stamina", "♻"),
+        Map.entry("More Fire Damage Vs Mobs", "🔥"),
+        Map.entry("More Frost Effect Vs Mobs", "❄"),
+        Map.entry("More Pure Damage Vs Mobs", "✧"),
+        Map.entry("Scythe Attack Range", "🌙"),
+        Map.entry("Wand Ability Power", "✨")
     );
 
     private final Setting<DisplayMode> bootModDisplay = sgBootMod.add(new EnumSetting.Builder<DisplayMode>()
@@ -1369,6 +1387,29 @@ public class ItemInfo extends Module {
         .name("boot-mod-maxed-color")
         .description("Color of the badge once the stat actually reads \"(Maxed)\" in its own lore.")
         .defaultValue(new SettingColor(255, 215, 0))
+        .build()
+    );
+
+    private final Setting<DisplayMode> bootModMaxText = sgBootMod.add(new EnumSetting.Builder<DisplayMode>()
+        .name("boot-mod-max-text")
+        .description("Once a stat reads \"(Maxed)\", show the word \"Max\" instead of its real value. Off always shows the real value; Always shows \"Max\" whenever maxed; On Keypress shows \"Max\" only while its own key is active (the real value the rest of the time).")
+        .defaultValue(DisplayMode.Off)
+        .build()
+    );
+
+    private final Setting<Keybind> bootModMaxTextKey = sgBootMod.add(new KeybindSetting.Builder()
+        .name("boot-mod-max-text-key")
+        .description("Key for Boot Mod Max Text's On Keypress, independent of Boot Mod's own display key.")
+        .defaultValue(Keybind.none())
+        .visible(() -> bootModMaxText.get() == DisplayMode.OnKeypress)
+        .build()
+    );
+
+    private final Setting<KeyMode> bootModMaxTextKeyMode = sgBootMod.add(new EnumSetting.Builder<KeyMode>()
+        .name("boot-mod-max-text-key-mode")
+        .description("Hold shows \"Max\" only while the key is held. Toggle flips it on/off each press.")
+        .defaultValue(KeyMode.Hold)
+        .visible(() -> bootModMaxText.get() == DisplayMode.OnKeypress)
         .build()
     );
 
@@ -1545,6 +1586,14 @@ public class ItemInfo extends Module {
         .build()
     );
 
+    private final Setting<Boolean> minFloorFullBar = sgDurabilityBar.add(new BoolSetting.Builder()
+        .name("min-floor-full-bar")
+        .description("Forces the bar to its full width while at/below the floor, so Min Floor Color/Flash covers the whole bar instead of whatever sliver the normal proportional fill would be (often 0 width, i.e. invisible, right at the floor).")
+        .defaultValue(true)
+        .visible(showMinFloor::get)
+        .build()
+    );
+
     private final Setting<MinFloorWarningMode> minFloorWarningMode = sgDurabilityBar.add(new EnumSetting.Builder<MinFloorWarningMode>()
         .name("min-floor-warning-mode")
         .description("How far above the actual floor the Min Floor warning starts, instead of only at/below the floor itself - gives you a heads-up to repair before you're actually there. None: no early warning, exactly the old behavior. Flat: a fixed number of Quality points above the floor. Percent: a percentage of the bar's own range (ceiling minus floor) above the floor.")
@@ -1573,6 +1622,50 @@ public class ItemInfo extends Module {
         .build()
     );
 
+    // Min Ward Floor / Min Super Enhancer Floor - the same "unmissable flash" idea as Min Floor
+    // above, just for the other two things Priority mode can dedicate the whole bar to instead of
+    // plain Quality. Only fires while that stat is actually the one driving the bar (Priority mode,
+    // Ward > 0 / bonus actually over max) - in Stacked mode the bar is always a blend of all three,
+    // never exclusively "about" Ward or the bonus, so there's no single bar-state to flash there.
+    // Shares Min Floor Color/Flash/Flash Color/Flash Speed/Full Bar above rather than duplicating a
+    // whole second color scheme - "running low" means the same thing visually regardless of which
+    // stat triggered it.
+    private final Setting<Boolean> showMinWardFloor = sgDurabilityBar.add(new BoolSetting.Builder()
+        .name("show-min-ward-floor")
+        .description("Flashes the bar (Min Floor Color/Flash above) once Ward drops to Min Ward Floor Threshold or below, while Priority mode has Ward actively driving the bar.")
+        .defaultValue(true)
+        .visible(() -> durabilityBarMode.get() == DurabilityBarMode.Priority)
+        .build()
+    );
+
+    private final Setting<Integer> minWardFloorThreshold = sgDurabilityBar.add(new IntSetting.Builder()
+        .name("min-ward-floor-threshold")
+        .description("Ward value at/below which the Min Ward Floor warning starts.")
+        .defaultValue(2)
+        .min(0)
+        .sliderRange(0, 10)
+        .visible(() -> durabilityBarMode.get() == DurabilityBarMode.Priority && showMinWardFloor.get())
+        .build()
+    );
+
+    private final Setting<Boolean> showMinBonusFloor = sgDurabilityBar.add(new BoolSetting.Builder()
+        .name("show-min-bonus-floor")
+        .description("Flashes the bar (Min Floor Color/Flash above) once the Super Enhancer bonus drops to Min Bonus Floor Threshold or below, while Priority mode has the bonus actively driving the bar (Quality currently over its own max).")
+        .defaultValue(true)
+        .visible(() -> durabilityBarMode.get() == DurabilityBarMode.Priority)
+        .build()
+    );
+
+    private final Setting<Integer> minBonusFloorThreshold = sgDurabilityBar.add(new IntSetting.Builder()
+        .name("min-bonus-floor-threshold")
+        .description("Bonus percentage points above max (not a percent of Max Bonus %) at/below which the Min Bonus Floor warning starts.")
+        .defaultValue(2)
+        .min(0)
+        .sliderRange(0, 50)
+        .visible(() -> durabilityBarMode.get() == DurabilityBarMode.Priority && showMinBonusFloor.get())
+        .build()
+    );
+
     private boolean wardToggledOn = false;
     private boolean tierToggledOn = false;
     private boolean qualityToggledOn = false;
@@ -1581,6 +1674,7 @@ public class ItemInfo extends Module {
     private boolean durabilityBarToggledOn = false;
     private boolean artifactToggledOn = false;
     private boolean bootModToggledOn = false;
+    private boolean bootModMaxTextToggledOn = false;
 
     public ItemInfo() {
         super(Categories.Items_, "item-info", "Shows Ward, Quality, Tier, Enchant and Attachment info from item lore as badges on item icons.");
@@ -1598,6 +1692,7 @@ public class ItemInfo extends Module {
         if (durabilityBarKeyMode.get() == KeyMode.Toggle && durabilityBarKey.get().isSet() && durabilityBarKey.get().matches(true, event.key, event.modifiers)) durabilityBarToggledOn = !durabilityBarToggledOn;
         if (artifactKeyMode.get() == KeyMode.Toggle && artifactKey.get().isSet() && artifactKey.get().matches(true, event.key, event.modifiers)) artifactToggledOn = !artifactToggledOn;
         if (bootModKeyMode.get() == KeyMode.Toggle && bootModKey.get().isSet() && bootModKey.get().matches(true, event.key, event.modifiers)) bootModToggledOn = !bootModToggledOn;
+        if (bootModMaxTextKeyMode.get() == KeyMode.Toggle && bootModMaxTextKey.get().isSet() && bootModMaxTextKey.get().matches(true, event.key, event.modifiers)) bootModMaxTextToggledOn = !bootModMaxTextToggledOn;
     }
 
     private boolean isKeyActive(Setting<Keybind> keySetting, Setting<KeyMode> keyModeSetting, boolean toggledOn) {
@@ -1739,7 +1834,9 @@ public class ItemInfo extends Module {
 
             if (bootModInfo != null) {
                 String symbol = resolveSymbol(bootModInfo.statName(), bootModSymbols.get(), BUILTIN_BOOT_MOD_SYMBOLS);
-                String text = (symbol != null ? symbol + " " : "") + bootModInfo.valueText();
+                boolean showMaxText = bootModInfo.maxed() && shouldShow(bootModMaxText.get(), isKeyActive(bootModMaxTextKey, bootModMaxTextKeyMode, bootModMaxTextToggledOn));
+                String value = showMaxText ? "Max" : bootModInfo.valueText();
+                String text = (symbol != null ? symbol + " " : "") + value;
                 int color = (bootModInfo.maxed() ? bootModMaxedColor.get() : bootModColor.get()).getPacked() | 0xFF000000;
 
                 drawBadge(context, textRenderer, text, x, y, bootModAnchor.get(), bootModLine.get(), color, resolveAlpha(bootModAlpha), resolveScale(bootModScale), hasOppositeOccupant(occupied, bootModAnchor.get(), bootModLine.get()));
@@ -2296,6 +2393,14 @@ public class ItemInfo extends Module {
     }
 
     public int getBarStep(ItemStack stack, QualityInfo info) {
+        // Min Floor's whole point is to catch your eye - a proportional step collapses to a sliver
+        // (often 0-1 pixels, i.e. barely/not visible at all regardless of color) right as quality
+        // nears/crosses the floor, which is exactly when the warning most needs to be visible. Min
+        // Floor Full Bar forces the bar to its full width instead, so Min Floor Color/Flash actually
+        // covers the whole bar every time, instead of whatever sliver the proportional fill left.
+        // Same deal for Min Ward/Bonus Floor - isLowWarning covers all three.
+        if (isLowWarning(info) && minFloorFullBar.get()) return 13;
+
         int maxQuality = info.maxQuality() != null ? info.maxQuality() : 100;
 
         if (durabilityBarMode.get() == DurabilityBarMode.Priority) {
@@ -2338,8 +2443,53 @@ public class ItemInfo extends Module {
         return MathHelper.clamp((int) Math.round(13 * combined), 0, 13);
     }
 
-    public int getBarColor(QualityInfo info) {
-        if (showMinFloor.get() && effectiveQuality(info) <= minFloorWarningThreshold(info)) return minFloorDisplayColor();
+    /** Stacked mode only - how much getBarColor should tint toward Ward's own color instead of plain Quality's, mirroring the same fraction*weight Ward already gets in getBarStep's own width calc above, so color and width agree about how "ward-driven" the bar currently looks. 0 if Ward headroom isn't included for this item's slot or there's no active Ward. */
+    private double wardBlendT(ItemStack stack, QualityInfo info) {
+        boolean armor = isChestOrLegsArmor(stack);
+        boolean includeWard = armor ? includeWardHeadroomArmor.get() : includeWardHeadroomWeapon.get();
+        if (!includeWard || info.ward() == null) return 0;
+
+        double wardFraction = MathHelper.clamp(info.ward() / (double) maxWard.get(), 0, 1);
+        return wardFraction * wardHeadroomWeight.get();
+    }
+
+    private static int blendPacked(int from, int to, double t) {
+        int fa = (from >>> 24) & 0xFF, fr = (from >> 16) & 0xFF, fg = (from >> 8) & 0xFF, fb = from & 0xFF;
+        int ta = (to >>> 24) & 0xFF, tr = (to >> 16) & 0xFF, tg = (to >> 8) & 0xFF, tb = to & 0xFF;
+
+        int a = (int) (fa + (ta - fa) * t);
+        int r = (int) (fr + (tr - fr) * t);
+        int g = (int) (fg + (tg - fg) * t);
+        int b = (int) (fb + (tb - fb) * t);
+
+        return (a << 24) | (r << 16) | (g << 8) | b;
+    }
+
+    private boolean isMinFloorWarning(QualityInfo info) {
+        return showMinFloor.get() && effectiveQuality(info) <= minFloorWarningThreshold(info);
+    }
+
+    private boolean isMinWardWarning(QualityInfo info) {
+        return durabilityBarMode.get() == DurabilityBarMode.Priority && showMinWardFloor.get()
+            && info.ward() != null && info.ward() > 0 && info.ward() <= minWardFloorThreshold.get();
+    }
+
+    private boolean isMinBonusWarning(QualityInfo info) {
+        if (durabilityBarMode.get() != DurabilityBarMode.Priority || !showMinBonusFloor.get()) return false;
+
+        int maxQuality = info.maxQuality() != null ? info.maxQuality() : 100;
+        if (info.qualityPercent() <= maxQuality) return false;
+
+        int over = info.qualityPercent() - maxQuality;
+        return over <= minBonusFloorThreshold.get();
+    }
+
+    private boolean isLowWarning(QualityInfo info) {
+        return isMinFloorWarning(info) || isMinWardWarning(info) || isMinBonusWarning(info);
+    }
+
+    public int getBarColor(ItemStack stack, QualityInfo info) {
+        if (isLowWarning(info)) return minFloorDisplayColor();
 
         if (durabilityBarMode.get() == DurabilityBarMode.Priority && info.ward() != null && info.ward() > 0) {
             return switch (wardColorMode.get()) {
@@ -2353,12 +2503,33 @@ public class ItemInfo extends Module {
         // Same Quality Color Mode the text badge uses (see showQuality above) - LoreColor already
         // reflects an over-max/enhanced item's own special color (e.g. aqua) the server itself put
         // on it, so Priority mode's "enhancer bonus active" case needs no separate branch here.
-        return switch (qualityColorMode.get()) {
+        int qualityColorPacked = switch (qualityColorMode.get()) {
             case LoreColor -> info.qualityColor() | 0xFF000000;
             case Custom -> qualityCustomColor.get().getPacked() | 0xFF000000;
             case ByValue -> qualityByValueColor(info).getPacked() | 0xFF000000;
             case ByValueRanges -> ColorRangeEntry.resolve(qualityRanges.get(), info.qualityPercent(), Color.WHITE).getPacked() | 0xFF000000;
         };
+
+        // Stacked mode never had any color cue for Ward at all before this - only getBarStep's own
+        // width nudged, which with a modest Ward Headroom Weight (0.25 default) could be subtle
+        // enough to miss entirely. Tinting the bar's color toward Ward's own color by the same
+        // fraction*weight the width already uses makes Ward's presence actually visible here too.
+        if (durabilityBarMode.get() == DurabilityBarMode.Stacked) {
+            double t = wardBlendT(stack, info);
+
+            if (t > 0) {
+                int wardColorPacked = switch (wardColorMode.get()) {
+                    case Custom -> wardCustomColor.get().getPacked() | 0xFF000000;
+                    case ByValue -> wardByValueColor(info.ward()).getPacked() | 0xFF000000;
+                    case ByValueRanges -> ColorRangeEntry.resolve(wardRanges.get(), info.ward(), Color.WHITE).getPacked() | 0xFF000000;
+                    case LoreColor -> info.wardColor() | 0xFF000000;
+                };
+
+                return blendPacked(qualityColorPacked, wardColorPacked, t);
+            }
+        }
+
+        return qualityColorPacked;
     }
 
     private int minFloorDisplayColor() {
@@ -2374,8 +2545,8 @@ public class ItemInfo extends Module {
         return "T" + tier;
     }
 
-    /** Tier N (plus that lore line's own color) from a "Tier N Unique Item" line (or "Cosmic Item" for tier 7), or null if the item isn't a unique. */
-    private TierInfo findTierInfo(ItemStack stack) {
+    /** Tier N (plus that lore line's own color) from a "Tier N Unique Item" line (or "Cosmic Item" for tier 7), or null if the item isn't a unique. Public so other modules (Weapon Models' per-tier model overrides) can reuse this instead of re-parsing lore themselves. */
+    public TierInfo findTierInfo(ItemStack stack) {
         LoreComponent lore = stack.get(DataComponentTypes.LORE);
         if (lore == null) return null;
 
@@ -2399,6 +2570,30 @@ public class ItemInfo extends Module {
     }
 
     public record TierInfo(int tier, int color) {
+    }
+
+    /** Tier N plus whether that line's rarity label contains "Unique" - unlike findTierInfo above, this also recognizes plain/non-Unique tier lines ("Tier 5", "Tier 6 Enhancer", ...), for Weapon Models' own per-tier model overrides. Cosmic items report tier 7, unique false - Cosmic is its own top rarity, not a "Unique" one. Null if the item has no Tier line at all. */
+    public WeaponTierInfo findWeaponTierInfo(ItemStack stack) {
+        LoreComponent lore = stack.get(DataComponentTypes.LORE);
+        if (lore == null) return null;
+
+        for (Text line : lore.lines()) {
+            String text = line.getString().trim();
+
+            Matcher m = ANY_TIER_LINE_PATTERN.matcher(text);
+            if (m.find()) {
+                int tier = Integer.parseInt(m.group(1));
+                boolean unique = m.group(2) != null && m.group(2).contains("Unique");
+                return new WeaponTierInfo(tier, unique);
+            }
+
+            if (COSMIC_TIER_PATTERN.matcher(text).find()) return new WeaponTierInfo(7, false);
+        }
+
+        return null;
+    }
+
+    public record WeaponTierInfo(int tier, boolean unique) {
     }
 
     private boolean isTierExcluded(int tier) {

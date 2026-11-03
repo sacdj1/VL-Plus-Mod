@@ -75,6 +75,14 @@ public class ReaderRuleEditScreen extends WindowScreen {
         addCheckboxRowRefresh(table, "Quality (your current weapon + chest/legs armor's own Quality %, instead of any text source - Pattern/Use Regex above are ignored while this is on)", rule.watchQuality, v -> rule.watchQuality = v);
 
         if (rule.watchQuality) {
+            table.add(theme.label("Gear piece"));
+            var slotDropdown = table.add(theme.dropdown(rule.qualitySlot)).expandCellX().widget();
+            slotDropdown.action = () -> rule.qualitySlot = slotDropdown.get();
+            table.row();
+
+            table.add(theme.label("All fires off whichever watched piece crosses the threshold first - pick a specific piece (e.g. Chest) to scope this rule to only that one, independent of what the others are doing.", 400));
+            table.row();
+
             table.add(theme.label("Fire when Quality is"));
             var comparatorDropdown = table.add(theme.dropdown(rule.qualityComparator)).expandCellX().widget();
             comparatorDropdown.action = () -> rule.qualityComparator = comparatorDropdown.get();
@@ -181,6 +189,14 @@ public class ReaderRuleEditScreen extends WindowScreen {
                 }
             }
         }
+
+        table.add(theme.label("Volume"));
+        WDoubleEdit volume = table.add(theme.doubleEdit(rule.volume, 0, 2)).expandX().widget();
+        volume.action = () -> rule.volume = volume.get();
+        table.row();
+
+        table.add(theme.label("Multiplier on top of Reader Notif's own shared Volume slider - 100% changes nothing.", 400));
+        table.row();
     }
 
     // Matches the label-then-control, two-cell-per-row shape every other row in this table uses

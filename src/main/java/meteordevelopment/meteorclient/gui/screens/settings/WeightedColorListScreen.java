@@ -11,6 +11,7 @@ import meteordevelopment.meteorclient.gui.renderer.GuiRenderer;
 import meteordevelopment.meteorclient.gui.widgets.WQuad;
 import meteordevelopment.meteorclient.gui.widgets.containers.WHorizontalList;
 import meteordevelopment.meteorclient.gui.widgets.containers.WTable;
+import meteordevelopment.meteorclient.gui.widgets.input.WDoubleEdit;
 import meteordevelopment.meteorclient.gui.widgets.input.WIntEdit;
 import meteordevelopment.meteorclient.settings.WeightedColorEntry;
 import meteordevelopment.meteorclient.settings.WeightedColorEntry.BlendMode;
@@ -59,13 +60,15 @@ public class WeightedColorListScreen extends WindowScreen {
         return switch (mode) {
             case Replace -> "Replace";
             case Colorize -> "Colorize";
+            case HueShift -> "Hue Shift";
         };
     }
 
     private static Mode nextMode(Mode mode) {
         return switch (mode) {
             case Replace -> Mode.Colorize;
-            case Colorize -> Mode.Replace;
+            case Colorize -> Mode.HueShift;
+            case HueShift -> Mode.Replace;
         };
     }
 
@@ -137,6 +140,8 @@ public class WeightedColorListScreen extends WindowScreen {
                 entry.weight = pasted.weight;
                 entry.blend = pasted.blend;
                 entry.mode = pasted.mode;
+                entry.hueShiftSpeed = pasted.hueShiftSpeed;
+                entry.hueShiftRange = pasted.hueShiftRange;
 
                 table.clear();
                 initTable();
@@ -144,6 +149,8 @@ public class WeightedColorListScreen extends WindowScreen {
 
             actions.add(theme.button("Duplicate")).right().widget().action = () -> {
                 WeightedColorEntry duplicate = new WeightedColorEntry(new SettingColor(color.r, color.g, color.b, color.a), entry.weight, entry.blend, entry.mode);
+                duplicate.hueShiftSpeed = entry.hueShiftSpeed;
+                duplicate.hueShiftRange = entry.hueShiftRange;
                 colors.add(colors.indexOf(entry) + 1, duplicate);
 
                 table.clear();
@@ -158,6 +165,18 @@ public class WeightedColorListScreen extends WindowScreen {
             };
 
             table.row();
+
+            if (entry.mode == Mode.HueShift) {
+                table.add(theme.label("Hue Shift Speed"));
+                WDoubleEdit hueSpeed = table.add(theme.doubleEdit(entry.hueShiftSpeed, 0.1, 10)).widget();
+                hueSpeed.action = () -> entry.hueShiftSpeed = hueSpeed.get();
+
+                table.add(theme.label("Range"));
+                WDoubleEdit hueRange = table.add(theme.doubleEdit(entry.hueShiftRange, 0, 180)).widget();
+                hueRange.action = () -> entry.hueShiftRange = hueRange.get();
+
+                table.row();
+            }
         }
 
         if (!colors.isEmpty()) table.add(theme.horizontalSeparator()).expandX();

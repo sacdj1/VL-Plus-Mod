@@ -6,6 +6,7 @@
 package meteordevelopment.meteorclient.settings;
 
 import meteordevelopment.meteorclient.utils.misc.VLSounds;
+import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.util.Identifier;
 
@@ -57,6 +58,16 @@ public class ReaderRule {
     public QualityComparator qualityComparator = QualityComparator.UnderOrEqual;
     public double qualityThreshold = 100;
 
+    /** All = the original "any watched piece" behavior (fires off whichever slot crosses the threshold first). A specific slot scopes this rule to only that one piece of gear, e.g. "Chestplate at/below 115%" independent of what the weapon or legs are doing. */
+    public enum QualitySlot {
+        All,
+        MainHand,
+        Chest,
+        Legs
+    }
+
+    public QualitySlot qualitySlot = QualitySlot.All;
+
     // Match
     public String pattern = "";
     public boolean useRegex = false;
@@ -86,6 +97,11 @@ public class ReaderRule {
     public String customSoundPath = "";
     public int customSoundSlot = -1;
 
+    // Per-rule volume multiplier, multiplied together with NoiseNotif's own shared Volume slider -
+    // 1.0 (100%) changes nothing, letting individual rules be made louder/quieter than the rest
+    // (e.g. a subtle visual-range ding vs. a loud boss-warning alarm) without touching the shared one.
+    public double volume = 1.0;
+
     /** Claims a VLSounds rule-sound-pool slot for this rule if it doesn't already have one. Returns false if the pool is exhausted. */
     public boolean ensureCustomSoundSlot() {
         if (customSoundSlot >= 0) return true;
@@ -104,6 +120,16 @@ public class ReaderRule {
 
     private transient Pattern compiled;
     private transient String compiledSource;
+
+    /** slot is null for main hand, matching NoiseNotif's own QUALITY_WATCH_SLOTS convention - a real EquipmentSlot lookup isn't needed/available for the main hand there. */
+    public boolean matchesQualitySlot(EquipmentSlot slot) {
+        return switch (qualitySlot) {
+            case All -> true;
+            case MainHand -> slot == null;
+            case Chest -> slot == EquipmentSlot.CHEST;
+            case Legs -> slot == EquipmentSlot.LEGS;
+        };
+    }
 
     public boolean matchesQuality(double value) {
         if (!enabled || !watchQuality) return false;
@@ -148,6 +174,7 @@ public class ReaderRule {
         tag.putBoolean("watchQuality", watchQuality);
         tag.putString("qualityComparator", qualityComparator.name());
         tag.putDouble("qualityThreshold", qualityThreshold);
+        tag.putString("qualitySlot", qualitySlot.name());
         tag.putString("pattern", pattern);
         tag.putBoolean("useRegex", useRegex);
         tag.putBoolean("notifySound", notifySound);
@@ -161,6 +188,7 @@ public class ReaderRule {
         if (registeredSound != null) tag.putString("registeredSound", registeredSound.toString());
         tag.putString("customSoundPath", customSoundPath);
         tag.putInt("customSoundSlot", customSoundSlot);
+        tag.putDouble("volume", volume);
 
         return tag;
     }
@@ -193,6 +221,11 @@ public class ReaderRule {
             rule.qualityComparator = QualityComparator.UnderOrEqual;
         }
         rule.qualityThreshold = tag.contains("qualityThreshold") ? tag.getDouble("qualityThreshold") : 100;
+        try {
+            rule.qualitySlot = tag.contains("qualitySlot") ? QualitySlot.valueOf(tag.getString("qualitySlot")) : QualitySlot.All;
+        } catch (IllegalArgumentException e) {
+            rule.qualitySlot = QualitySlot.All;
+        }
 
         rule.pattern = tag.getString("pattern");
         rule.useRegex = tag.getBoolean("useRegex");
@@ -212,6 +245,7 @@ public class ReaderRule {
         rule.registeredSound = tag.contains("registeredSound") ? Identifier.tryParse(tag.getString("registeredSound")) : null;
         rule.customSoundPath = tag.getString("customSoundPath");
         rule.customSoundSlot = tag.contains("customSoundSlot") ? tag.getInt("customSoundSlot") : -1;
+        rule.volume = tag.contains("volume") ? tag.getDouble("volume") : 1.0;
 
         return rule;
     }
