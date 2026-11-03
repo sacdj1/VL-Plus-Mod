@@ -1,0 +1,14 @@
+{
+    "use": {
+        "duration": 350,
+        "keyframes": [
+            { "t": 0,   "pos": [0, 0, 0],     "rot": [0, 0, 0],   "scale": 1, "ease": "out" },
+            { "t": 0.4, "pos": [0, 0, 0.15],  "rot": [10, 0, 0],  "scale": 1, "ease": "in" },
+            { "t": 1,   "pos": [0, 0, 0],     "rot": [0, 0, 0],   "scale": 1, "ease": "inout" }
+        ]
+    },
+    "drop": {
+        "preset": "Flourish",
+        "duration": 300
+    }
+}
